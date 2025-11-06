@@ -1,0 +1,234 @@
+.ai-scheduler-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-family: "Noto Sans KR", sans-serif;
+  background-color: #f0f2f5;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  flex-direction: row; /* 내부 left-nav와 콘텐츠를 수평으로 배치 */
+  overflow: hidden;
+}
+
+.scheduler-panel {
+  flex: 2;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panel-header h1 {
+  font-size: 28px;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.schedule-form {
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.form-group input[type="text"],
+.form-group input[type="date"] {
+  width: calc(100% - 20px);
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.form-group-inline {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.form-group-inline .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.participants-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.participants-input input {
+  border: none;
+  outline: none;
+  flex: 1;
+  min-width: 80px;
+}
+
+.participant-tag {
+  background-color: #e6f7ff;
+  color: #1890ff;
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.participant-tag button {
+  background: none;
+  border: none;
+  color: #1890ff;
+  margin-left: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.form-actions button {
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.modify-button {
+  background-color: #f0f2f5;
+  color: #333;
+  border: 1px solid #d9d9d9;
+}
+
+.register-button {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+}
+
+.natural-language-input {
+  background-color: #e6f7ff;
+  border: 1px solid #91d5ff;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+.natural-language-input p {
+  margin: 0;
+  color: #333;
+  font-size: 14px;
+}
+
+.right-panel {
+  flex: 1;
+  background-color: #ffffff;
+  padding: 20px;
+  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.05);
+  overflow-y: auto;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.calendar-header h2 {
+  font-size: 20px;
+  color: #333;
+  margin: 0;
+}
+
+.calendar-header button {
+  background: none;
+  border: 1px solid #ddd;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+  text-align: center;
+}
+
+.calendar-weekday {
+  font-weight: bold;
+  color: #888;
+  margin-bottom: 10px;
+}
+
+.calendar-day {
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.calendar-day:hover {
+  background-color: #e6f7ff;
+}
+
+.calendar-day.today {
+  background-color: #ffe7ba;
+  font-weight: bold;
+  color: #faad14;
+}
+
+.calendar-day.selected {
+  background-color: #1890ff;
+  color: white;
+  font-weight: bold;
+}
+
+.empty-day {
+  visibility: hidden;
+}
+
+.quick-actions {
+  margin-top: 30px;
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+
+.quick-actions h2 {
+  font-size: 20px;
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.quick-actions button {
+  background-color: #f0f2f5;
+  color: #333;
+  border: 1px solid #d9d9d9;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.quick-actions button:hover {
+  background-color: #e6e6e6;
+}

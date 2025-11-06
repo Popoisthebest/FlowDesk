@@ -1,0 +1,217 @@
+.team-auto-matching-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-family: "Noto Sans KR", sans-serif;
+  background-color: #f0f2f5;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  flex-direction: row; /* 내부 left-nav와 콘텐츠를 수평으로 배치 */
+  overflow: hidden;
+}
+
+.team-matching-panel {
+  flex: 3;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panel-header {
+  margin-bottom: 20px;
+}
+
+.panel-header h1 {
+  font-size: 28px;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.panel-header p {
+  color: #666;
+  font-size: 14px;
+}
+
+.filters {
+  display: flex;
+  margin-bottom: 30px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 20px;
+}
+
+.filter-group {
+  margin-right: 30px;
+}
+
+.filter-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  padding: 8px 15px;
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.role-tag {
+  background-color: #e6f7ff;
+  color: #1890ff;
+  border: 1px solid #91d5ff;
+}
+
+.time-tag {
+  background-color: #fffbe6;
+  color: #faad14;
+  border: 1px solid #ffe58f;
+}
+
+.preference-tag {
+  background-color: #f9f0ff;
+  color: #722ed1;
+  border: 1px solid #d3adf7;
+}
+
+.tag:hover {
+  opacity: 0.8;
+}
+
+.matching-results {
+  display: flex;
+  gap: 30px;
+}
+
+.candidate-members,
+.recommended-team {
+  flex: 1;
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.candidate-members h2,
+.recommended-team h2 {
+  font-size: 20px;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.candidate-members > p,
+.recommended-team > p {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.member-card {
+  border: 1px solid #eee;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  background-color: #fdfdfd;
+}
+
+.member-info {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.member-name {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin-right: 10px;
+}
+
+.member-role {
+  background-color: #e6f7ff;
+  color: #1890ff;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.availability,
+.member-tags,
+.affinity {
+  font-size: 14px;
+  color: #555;
+  margin-bottom: 5px;
+}
+
+.affinity span {
+  font-weight: bold;
+  color: #1890ff;
+}
+
+.recommended-team .affinity-score {
+  display: block;
+  text-align: right;
+  font-size: 16px;
+  font-weight: bold;
+  color: #52c41a;
+  margin-bottom: 10px;
+}
+
+.team-member-card {
+  display: flex;
+  align-items: center;
+  border: 1px solid #eee;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  background-color: #fdfdfd;
+}
+
+.member-initial {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #bae7ff;
+  color: #1890ff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 18px;
+  font-weight: bold;
+  margin-right: 15px;
+}
+
+.member-details p {
+  margin: 0;
+  font-size: 14px;
+  color: #555;
+}
+
+.member-details .name {
+  font-weight: bold;
+  color: #333;
+}
+
+.member-details .role {
+  background-color: #f0f2f5;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  display: inline-block;
+  margin-left: 5px;
+}
+
+.member-details .tags span {
+  color: #722ed1;
+  font-weight: 500;
+}

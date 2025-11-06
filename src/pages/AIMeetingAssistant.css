@@ -1,0 +1,178 @@
+.ai-meeting-assistant-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-family: "Noto Sans KR", sans-serif;
+  background-color: #f0f2f5;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  flex-direction: row; /* 내부 left-nav와 콘텐츠를 수평으로 배치 */
+  overflow: hidden;
+}
+
+.meeting-assistant-panel {
+  flex: 3;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.panel-header h1 {
+  font-size: 28px;
+  color: #333;
+  margin-right: 15px;
+}
+
+.status-badge {
+  background-color: #fff0f6;
+  color: #eb2f96;
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-right: 15px;
+}
+
+.time {
+  color: #666;
+  font-size: 14px;
+}
+
+.realtime-audio-recognition h2,
+.realtime-text h2,
+.summary-actions h2 {
+  font-size: 20px;
+  color: #333;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.waveform {
+  height: 80px;
+  background-color: #e6f7ff;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  /* 실제 파형은 JavaScript로 그려야 합니다 */
+}
+
+.stt-output {
+  background-color: #ffffff;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  margin-bottom: 20px;
+}
+
+.stt-output p {
+  margin: 5px 0;
+  line-height: 1.6;
+  color: #555;
+}
+
+.stt-output p span {
+  font-weight: bold;
+  color: #1890ff;
+  margin-right: 8px;
+}
+
+.summary-card {
+  background-color: #e6f7ff;
+  border: 1px solid #91d5ff;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.summary-card p {
+  margin: 0;
+  color: #333;
+}
+
+.summary-card p span {
+  font-weight: bold;
+  color: #1890ff;
+}
+
+.right-panel {
+  width: 300px;
+  background-color: #ffffff;
+  padding: 20px;
+  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.05);
+  overflow-y: auto;
+}
+
+.right-panel h2 {
+  font-size: 20px;
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.right-panel p {
+  color: #666;
+  margin-bottom: 15px;
+}
+
+.generated-task-list {
+  margin-bottom: 20px;
+}
+
+.task-item {
+  background-color: #f6ffed;
+  border: 1px solid #b7eb8f;
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.task-item h3 {
+  font-size: 16px;
+  color: #333;
+  margin: 0 0 5px 0;
+}
+
+.task-item p {
+  font-size: 13px;
+  color: #555;
+  margin: 0;
+}
+
+.task-item p span {
+  font-weight: bold;
+  color: #52c41a;
+  margin-right: 5px;
+}
+
+.add-all-button {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.add-to-calendar-button {
+  background-color: #f0f2f5;
+  color: #333;
+  border: 1px solid #d9d9d9;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.add-all-button:hover,
+.add-to-calendar-button:hover {
+  opacity: 0.9;
+}

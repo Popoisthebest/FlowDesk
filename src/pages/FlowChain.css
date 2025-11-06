@@ -1,0 +1,262 @@
+.flowchain-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-family: "Noto Sans KR", sans-serif;
+  background-color: #f0f2f5;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  flex-direction: row; /* 내부 left-nav와 콘텐츠를 수평으로 배치 */
+  overflow: hidden;
+}
+
+.left-nav {
+  width: 250px; /* FlowChain 사진을 참고하여 너비를 지정합니다. */
+  background-color: #ffffff;
+  padding: 20px;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+  overflow-y: auto;
+  display: flex; /* 세부 메뉴가 보이도록 flex로 설정합니다. */
+  flex-direction: column; /* 세부 메뉴 항목들을 세로로 배치합니다. */
+}
+
+.filter-section {
+  margin-left: 10px; /* 필터 섹션 좌측 마진 */
+  margin-right: 10px; /* 필터 섹션 우측 마진 */
+}
+
+.filter-section h2 {
+  font-size: 20px;
+  color: #1890ff; /* 파란색으로 변경 */
+  margin-bottom: 20px;
+}
+
+.filter-group {
+  margin-bottom: 20px;
+}
+
+.filter-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #555; /* 어두운 회색으로 변경 */
+}
+
+.filter-group select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #91d5ff; /* 파란색 테두리 */
+  border-radius: 8px; /* 둥근 모서리 */
+  background-color: #ffffff; /* 하얀색 배경 */
+  color: #333;
+  font-size: 15px;
+}
+
+.member-checkboxes div {
+  margin-bottom: 5px;
+}
+
+.member-checkboxes input[type="checkbox"] {
+  margin-right: 8px;
+  accent-color: #1890ff; /* 체크박스 색상 파란색으로 */
+}
+
+.member-checkboxes label {
+  color: #555; /* 체크박스 라벨 색상 */
+}
+
+.reset-filter-button {
+  background-color: #1890ff; /* 파란색 배경 */
+  color: white; /* 하얀색 텍스트 */
+  border: none;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 20px;
+  font-weight: bold;
+}
+
+.reset-filter-button:hover {
+  background-color: #40a9ff; /* 호버 시 약간 밝은 파란색 */
+}
+
+.flowchain-panel {
+  flex: 3;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panel-header {
+  margin-bottom: 20px;
+}
+
+.panel-header h1 {
+  font-size: 28px;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.panel-header p {
+  color: #666;
+  font-size: 14px;
+}
+
+.action-flow {
+  position: relative;
+  padding-left: 30px; /* Indicator line space */
+}
+
+.action-card {
+  position: relative;
+  margin-bottom: 30px;
+  padding: 15px 20px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.action-indicator {
+  position: absolute;
+  left: -20px;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  background-color: #1890ff;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  z-index: 1;
+}
+
+.action-flow::before {
+  content: "";
+  position: absolute;
+  left: 34px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #e0e0e0;
+}
+
+.card-content .time {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 5px;
+}
+
+.card-content .type {
+  font-size: 14px;
+  font-weight: bold;
+  color: #1890ff;
+  margin-bottom: 10px;
+}
+
+.card-content .summary {
+  font-size: 18px;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.card-content ul {
+  list-style: disc;
+  margin-left: 20px;
+  padding: 0;
+  color: #555;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.card-content p.participants,
+.card-content p.decision-maker {
+  font-size: 13px;
+  color: #777;
+  margin-bottom: 5px;
+}
+
+.task-status-info {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.task-priority {
+  background-color: #ffccc7;
+  color: #f5222d;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.task-progress {
+  background-color: #d9f7be;
+  color: #52c41a;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.right-panel {
+  width: 280px;
+  background-color: #ffffff;
+  padding: 20px;
+  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.05);
+  overflow-y: auto;
+}
+
+.export-options button {
+  background-color: #f0f2f5;
+  color: #333;
+  border: 1px solid #d9d9d9;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.export-options button:hover {
+  background-color: #e6e6e6;
+}
+
+.project-status h2,
+.participants-list h2 {
+  font-size: 20px;
+  color: #333;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.project-status .event-count {
+  font-size: 14px;
+  color: #555;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.project-status .event-count span {
+  font-weight: bold;
+  color: #1890ff;
+  margin-right: 5px;
+}
+
+.participant-avatars {
+  display: flex;
+  gap: 10px;
+}
+
+.participant-avatars .avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #bae7ff;
+  color: #1890ff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 16px;
+  font-weight: bold;
+}
