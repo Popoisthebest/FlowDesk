@@ -255,8 +255,13 @@
 .fake-wave-row {
   display: flex;
   align-items: flex-end;
+  justify-content: center;
   gap: 3px;
   margin-top: 18px;
+
+  /* ✅ 파형 영역 고정 높이 (부모 레이아웃이 안 움직이도록) */
+  height: 40px;
+  overflow: hidden;
 }
 
 .fake-wave-bar {

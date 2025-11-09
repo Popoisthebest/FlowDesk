@@ -29,9 +29,8 @@ function App() {
       <div className="app-container">
         {/* Left Sidebar */}
         <nav className="left-sidebar">
-          <div className="sidebar-header">
-            <div className="sidebar-logo-mark">FD</div>
-            <div className="sidebar-logo-text">FlowDesk</div>
+          <div className="sidebar-header p-6 border-b border-slate-200/50">
+            <h1 className="text-blue-600 tracking-tight">FlowDesk</h1>
           </div>
 
           <ul className="sidebar-menu">
