@@ -616,55 +616,62 @@ const ActionSense = () => {
 
         <div className="task-preview-panel">
           <h2>생성된 업무 카드</h2>
-          {tasks.length === 0 ? (
-            <p>아직 생성된 업무가 없습니다.</p>
-          ) : (
-            tasks.map((t) => (
-              <div key={t.id} className="task-card-preview">
-                <p className="status">• {t.status}</p>
-                <h3>{t.title}</h3>
-                <p className="task-id">#{t.id}</p>
-                {t.description && (
-                  <p className="description">{t.description}</p>
-                )}
-                {t.assignedTo && <p className="detail">담당: {t.assignedTo}</p>}
-                {t.dueDate && <p className="detail">기한: {t.dueDate}</p>}
-                <p className="detail">우선순위: {t.priority}</p>
-                {!!t.tags?.length && (
-                  <p className="detail">
-                    태그: {t.tags.map((tg) => `#${tg}`).join(" ")}
-                  </p>
-                )}
-                <div className="card-actions">
-                  <button
-                    className="btn-secondary"
-                    onClick={() => {
-                      setTasks((prev) =>
-                        prev.map((x) =>
-                          x.id === t.id
-                            ? {
-                                ...x,
-                                progress: Math.min(100, (x.progress ?? 0) + 20),
-                              }
-                            : x
-                        )
-                      );
-                    }}
-                  >
-                    진행 +20%
-                  </button>
-                  <button
-                    className="btn-danger"
-                    onClick={() =>
-                      setTasks((prev) => prev.filter((x) => x.id !== t.id))
-                    }
-                  >
-                    삭제
-                  </button>
+          <div className="task-list-scroll">
+            {tasks.length === 0 ? (
+              <p>아직 생성된 업무가 없습니다.</p>
+            ) : (
+              tasks.map((t) => (
+                <div key={t.id} className="task-card-preview">
+                  <p className="status">• {t.status}</p>
+                  <h3>{t.title}</h3>
+                  <p className="task-id">#{t.id}</p>
+                  {t.description && (
+                    <p className="description">{t.description}</p>
+                  )}
+                  {t.assignedTo && (
+                    <p className="detail">담당: {t.assignedTo}</p>
+                  )}
+                  {t.dueDate && <p className="detail">기한: {t.dueDate}</p>}
+                  <p className="detail">우선순위: {t.priority}</p>
+                  {!!t.tags?.length && (
+                    <p className="detail">
+                      태그: {t.tags.map((tg) => `#${tg}`).join(" ")}
+                    </p>
+                  )}
+                  <div className="card-actions">
+                    <button
+                      className="btn-secondary"
+                      onClick={() => {
+                        setTasks((prev) =>
+                          prev.map((x) =>
+                            x.id === t.id
+                              ? {
+                                  ...x,
+                                  progress: Math.min(
+                                    100,
+                                    (x.progress ?? 0) + 20
+                                  ),
+                                }
+                              : x
+                          )
+                        );
+                      }}
+                    >
+                      진행 +20%
+                    </button>
+                    <button
+                      className="btn-danger"
+                      onClick={() =>
+                        setTasks((prev) => prev.filter((x) => x.id !== t.id))
+                      }
+                    >
+                      삭제
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
 

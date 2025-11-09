@@ -182,6 +182,13 @@
   color: #333;
   margin: 0 0 20px 0;
 }
+/* 생성된 업무 카드 리스트 영역을 스크롤 가능하게 */
+.task-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding-right: 4px; /* 스크롤바와 카드 사이 여백 */
+}
 .task-card-preview {
   background-color: #e6f7ff;
   border: 1px solid #91d5ff;
