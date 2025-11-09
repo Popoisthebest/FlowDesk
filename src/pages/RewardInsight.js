@@ -1,23 +1,23 @@
-import React, { useState } from 'react';
-import './RewardInsight.css';
+import React, { useState } from "react";
+import "./RewardInsight.css";
 
 const RewardInsight = () => {
-  const [activeTab, setActiveTab] = useState('개발팀 • 릴리즈 준비');
+  const [activeTab, setActiveTab] = useState("개발팀 • 릴리즈 준비");
 
   const teamReport = {
     kudosThisWeek: 7,
     teamEngagement: 85,
     topReceivers: [
-      { name: '서현', kudos: 12 },
-      { name: '민준', kudos: 8 },
-      { name: '지효', kudos: 6 },
+      { name: "서현", kudos: 12 },
+      { name: "민준", kudos: 8 },
+      { name: "지효", kudos: 6 },
     ],
   };
 
   const recentKudos = [
-    { receiver: '서현', message: '릴리즈 기여도 칭찬' },
-    { receiver: '민준', message: '빠른 버그 수정' },
-    { receiver: '지효', message: '새로운 기능 제안' },
+    { receiver: "서현", message: "릴리즈 기여도 칭찬" },
+    { receiver: "민준", message: "빠른 버그 수정" },
+    { receiver: "지효", message: "새로운 기능 제안" },
   ];
 
   return (
@@ -30,8 +30,10 @@ const RewardInsight = () => {
           <div className="panel-header">
             <div className="tabs">
               <button
-                className={activeTab === '개발팀 • 릴리즈 준비' ? 'active' : ''}
-                onClick={() => setActiveTab('개발팀 • 릴리즈 준비')}
+                className={`btn-secondary ${
+                  activeTab === "개발팀 • 릴리즈 준비" ? "active" : ""
+                }`}
+                onClick={() => setActiveTab("개발팀 • 릴리즈 준비")}
               >
                 개발팀 • 릴리즈 준비
               </button>
@@ -42,19 +44,30 @@ const RewardInsight = () => {
 
           <div className="chat-area">
             <div className="message">
-              <p><span>민준</span></p>
-              <p><span>오후 3:20</span> 릴리즈 준비 어떻게 진행되고 있나요?</p>
+              <p>
+                <span>민준</span>
+              </p>
+              <p>
+                <span>오후 3:20</span> 릴리즈 준비 어떻게 진행되고 있나요?
+              </p>
             </div>
             <div className="message">
-              <p><span>서현</span></p>
-              <p><span>오후 3:22</span> 테스트 케이스 모두 통과했고, 배포 준비 완료했습니다.</p>
+              <p>
+                <span>서현</span>
+              </p>
+              <p>
+                <span>오후 3:22</span> 테스트 케이스 모두 통과했고, 배포 준비
+                완료했습니다.
+              </p>
             </div>
             <div className="system-message">
-              <p><span>오후 3:25</span> 이번 릴리즈 정말 수고했어요! 최고에요 👍</p>
+              <p>
+                <span>오후 3:25</span> 이번 릴리즈 정말 수고했어요! 최고에요 👍
+              </p>
             </div>
             <div className="input-area">
               <input type="text" placeholder="메시지를 입력하세요..." />
-              <button>🚀</button>
+              <button className="btn-primary">🚀</button>
             </div>
           </div>
 
@@ -69,7 +82,11 @@ const RewardInsight = () => {
             </div>
             <div className="form-group">
               <label>메시지 요약</label>
-              <input type="text" value="릴리즈 기여도와 문제 해결 능력 칭찬" readOnly />
+              <input
+                type="text"
+                value="릴리즈 기여도와 문제 해결 능력 칭찬"
+                readOnly
+              />
             </div>
             <div className="form-group">
               <label>배지 선택</label>
@@ -80,8 +97,8 @@ const RewardInsight = () => {
               </div>
             </div>
             <div className="modal-actions">
-              <button className="cancel-button">취소</button>
-              <button className="create-button">생성</button>
+              <button className="btn-secondary">취소</button>
+              <button className="btn-primary">생성</button>
             </div>
           </div>
         </div>
@@ -100,7 +117,9 @@ const RewardInsight = () => {
             <div className="top-receivers">
               <h3>받은 사람 Top 3</h3>
               {teamReport.topReceivers.map((member, index) => (
-                <p key={index}><span>{member.name}</span> #{index + 1} {member.kudos} kudos</p>
+                <p key={index}>
+                  <span>{member.name}</span> #{index + 1} {member.kudos} kudos
+                </p>
               ))}
             </div>
           </div>

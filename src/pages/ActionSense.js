@@ -567,13 +567,13 @@ const ActionSense = () => {
                       </div>
                       <div className="actions">
                         <button
-                          className="primary"
+                          className="btn-primary"
                           onClick={() => onAcceptSuggestion(m.suggestion)}
                         >
                           바로 등록
                         </button>
                         <button
-                          className="outline"
+                          className="btn-secondary"
                           onClick={() => onOpenModal(m.suggestion)}
                         >
                           수정 후 등록
@@ -603,9 +603,13 @@ const ActionSense = () => {
 
           <div className="samples">
             {quickSamples.map((s, i) => (
-              <button key={i} onClick={() => setInput(s)}>{`샘플${
-                i + 1
-              }`}</button>
+              <button
+                key={i}
+                className="btn-secondary"
+                onClick={() => setInput(s)}
+              >
+                {`샘플${i + 1}`}
+              </button>
             ))}
           </div>
         </div>
@@ -633,6 +637,7 @@ const ActionSense = () => {
                 )}
                 <div className="card-actions">
                   <button
+                    className="btn-secondary"
                     onClick={() => {
                       setTasks((prev) =>
                         prev.map((x) =>
@@ -649,7 +654,7 @@ const ActionSense = () => {
                     진행 +20%
                   </button>
                   <button
-                    className="danger"
+                    className="btn-danger"
                     onClick={() =>
                       setTasks((prev) => prev.filter((x) => x.id !== t.id))
                     }
@@ -722,7 +727,7 @@ const ActionSense = () => {
 
             <div className="modal-actions">
               <button
-                className="cancel-button"
+                className="btn-secondary"
                 onClick={() => {
                   setModalOpen(false);
                   setDraft(null);
@@ -730,7 +735,7 @@ const ActionSense = () => {
               >
                 취소
               </button>
-              <button className="create-button" onClick={onSubmitDraft}>
+              <button className="btn-primary" onClick={onSubmitDraft}>
                 업무 카드 생성
               </button>
             </div>

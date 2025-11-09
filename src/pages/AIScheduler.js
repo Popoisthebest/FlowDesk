@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
-import './AIScheduler.css';
+import React, { useState } from "react";
+import "./AIScheduler.css";
 
 const AIScheduler = () => {
   const [date, setDate] = useState(new Date(2025, 9, 16)); // 2025년 10월 16일
-  const [title, setTitle] = useState('주간 스탠드업');
-  const [startTime, setStartTime] = useState('오전 10:00');
-  const [endTime, setEndTime] = useState('오전 10:30');
-  const [location, setLocation] = useState('회의실 A');
-  const [participants, setParticipants] = useState(['민준', '서현', '지후']);
+  const [title, setTitle] = useState("주간 스탠드업");
+  const [startTime, setStartTime] = useState("오전 10:00");
+  const [endTime, setEndTime] = useState("오전 10:30");
+  const [location, setLocation] = useState("회의실 A");
+  const [participants, setParticipants] = useState(["민준", "서현", "지후"]);
 
   const daysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = (year, month) => new Date(year, month, 1).getDay(); // 0 for Sunday, 1 for Monday
@@ -26,12 +26,20 @@ const AIScheduler = () => {
 
     // Days of the month
     for (let i = 1; i <= numDays; i++) {
-      const isToday = year === new Date().getFullYear() && month === new Date().getMonth() && i === new Date().getDate();
-      const isSelected = year === date.getFullYear() && month === date.getMonth() && i === date.getDate();
+      const isToday =
+        year === new Date().getFullYear() &&
+        month === new Date().getMonth() &&
+        i === new Date().getDate();
+      const isSelected =
+        year === date.getFullYear() &&
+        month === date.getMonth() &&
+        i === date.getDate();
       calendarDays.push(
         <div
           key={i}
-          className={`calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
+          className={`calendar-day ${isToday ? "today" : ""} ${
+            isSelected ? "selected" : ""
+          }`}
           onClick={() => setDate(new Date(year, month, i))}
         >
           {i}
@@ -42,13 +50,16 @@ const AIScheduler = () => {
   };
 
   const goToPreviousMonth = () => {
-    setDate(prevDate => new Date(prevDate.getFullYear(), prevDate.getMonth() - 1, 1));
+    setDate(
+      (prevDate) => new Date(prevDate.getFullYear(), prevDate.getMonth() - 1, 1)
+    );
   };
 
   const goToNextMonth = () => {
-    setDate(prevDate => new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 1));
+    setDate(
+      (prevDate) => new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 1)
+    );
   };
-
 
   return (
     <div className="ai-scheduler-container">
@@ -64,38 +75,60 @@ const AIScheduler = () => {
           <div className="schedule-form">
             <div className="form-group">
               <label>제목</label>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
             </div>
             <div className="form-group">
               <label>날짜</label>
-              <input type="date" value={date.toISOString().split('T')[0]} onChange={(e) => setDate(new Date(e.target.value))} />
+              <input
+                type="date"
+                value={date.toISOString().split("T")[0]}
+                onChange={(e) => setDate(new Date(e.target.value))}
+              />
             </div>
             <div className="form-group-inline">
               <div className="form-group">
                 <label>시작</label>
-                <input type="text" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                <input
+                  type="text"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
               </div>
               <div className="form-group">
                 <label>종료</label>
-                <input type="text" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                <input
+                  type="text"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
               </div>
             </div>
             <div className="form-group">
               <label>장소</label>
-              <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} />
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              />
             </div>
             <div className="form-group">
               <label>참석자</label>
               <div className="participants-input">
                 {participants.map((p, i) => (
-                  <span key={i} className="participant-tag">{p} <button>x</button></span>
+                  <span key={i} className="participant-tag">
+                    {p} <button>x</button>
+                  </span>
                 ))}
                 <input type="text" placeholder="+ 추가" />
               </div>
             </div>
             <div className="form-actions">
-              <button className="modify-button">수정</button>
-              <button className="register-button">일정 등록</button>
+              <button className="btn-secondary">수정</button>
+              <button className="btn-primary">일정 등록</button>
             </div>
           </div>
 
@@ -107,9 +140,15 @@ const AIScheduler = () => {
         {/* Right Panel (Calendar) */}
         <div className="right-panel">
           <div className="calendar-header">
-            <button onClick={goToPreviousMonth}>&lt;</button>
-            <h2>{date.getFullYear()}년 {date.getMonth() + 1}월</h2>
-            <button onClick={goToNextMonth}>&gt;</button>
+            <button className="btn-secondary" onClick={goToPreviousMonth}>
+              &lt;
+            </button>
+            <h2>
+              {date.getFullYear()}년 {date.getMonth() + 1}월
+            </h2>
+            <button className="btn-secondary" onClick={goToNextMonth}>
+              &gt;
+            </button>
           </div>
           <div className="calendar-grid">
             <div className="calendar-weekday">일</div>
@@ -123,9 +162,9 @@ const AIScheduler = () => {
           </div>
           <div className="quick-actions">
             <h2>빠른 액션</h2>
-            <button>Google 캘린더로 내보내기</button>
-            <button>팀원들에게 공유</button>
-            <button>일정 설정</button>
+            <button className="btn-primary">Google 캘린더로 내보내기</button>
+            <button className="btn-secondary">팀원들에게 공유</button>
+            <button className="btn-secondary">일정 설정</button>
           </div>
         </div>
       </div>

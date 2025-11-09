@@ -297,6 +297,7 @@ const AIMeetingAssistant = () => {
                 : "기록 대기 중"}
             </span>
             <button
+              className={`btn-primary`}
               onClick={isRecording ? stopRecording : startRecording}
               disabled={isProcessing}
             >

@@ -110,7 +110,6 @@ const defaultProjects = [
   "프로젝트 Gamma",
 ];
 const defaultPeriods = ["전체", "이번 주", "이번 달", "지난 달"];
-const defaultMembers = ["전체", "민준", "서현", "지효", "나"];
 
 const FlowChain = () => {
   const [meetings, setMeetings] = useState(() => loadLS(LS_MEETINGS, []));
@@ -119,7 +118,7 @@ const FlowChain = () => {
   const [filters, setFilters] = useState({
     project: "모든 프로젝트",
     period: "전체",
-    members: new Set(defaultMembers),
+    members: new Set(), // 실제 멤버 목록을 본 뒤 채움
   });
   const [busy, setBusy] = useState(false);
   const [reportMarkdown, setReportMarkdown] = useState("");
@@ -163,7 +162,7 @@ const FlowChain = () => {
     return true;
   };
 
-  // 참여자 추출(간단)
+  // 회의에서 참여자 추출
   function extractParticipants(utterances = []) {
     const s = new Set();
     for (const u of utterances) {
@@ -172,26 +171,97 @@ const FlowChain = () => {
     return [...s];
   }
 
-  // 타임라인 구성
+  // 🔹 실제 데이터에서 멤버 목록 동적으로 추출
+  const memberOptions = useMemo(() => {
+    const set = new Set();
+
+    meetings.forEach((mt) => {
+      (mt.utterances || []).forEach((u) => {
+        if (u && u.speaker) set.add(u.speaker);
+      });
+      (mt.actionItems || []).forEach((ai) => {
+        if (ai && ai.assignedTo) set.add(ai.assignedTo);
+      });
+    });
+
+    tasks.forEach((t) => {
+      if (t && t.assignedTo) set.add(t.assignedTo);
+    });
+
+    return Array.from(set);
+  }, [meetings, tasks]);
+
+  // 멤버 옵션 바뀔 때 필터의 members 초기화/보정
+  useEffect(() => {
+    if (memberOptions.length === 0) return;
+    setFilters((f) => {
+      // 처음이면 전체 선택
+      if (!f.members || f.members.size === 0) {
+        return { ...f, members: new Set(memberOptions) };
+      }
+      // 새로 추가된 멤버가 있으면 자동 추가
+      const next = new Set(f.members);
+      let changed = false;
+      memberOptions.forEach((n) => {
+        if (!next.has(n)) {
+          next.add(n);
+          changed = true;
+        }
+      });
+      if (!changed) return f;
+      return { ...f, members: next };
+    });
+  }, [memberOptions]);
+
+  // 타임라인 구성 (기간 + 멤버 필터 모두 반영)
   const timeline = useMemo(() => {
     const nodes = [];
+
+    // 🔴 여기 로직 변경: Set이면 무조건 멤버 필터 ON (size 0도 포함)
+    const hasMemberFilter =
+      memberOptions.length > 0 && filters.members instanceof Set;
+
+    const meetingPassesMemberFilter = (participantsArr, actionItemsArr) => {
+      if (!hasMemberFilter) return true;
+      const names = new Set(participantsArr || []);
+      (actionItemsArr || []).forEach((ai) => {
+        if (ai && ai.assignedTo) names.add(ai.assignedTo);
+      });
+      for (const n of names) {
+        if (filters.members.has(n)) return true;
+      }
+      return false; // 선택된 멤버와 겹치는 사람이 없으면 제외
+    };
+
+    const taskPassesMemberFilter = (task) => {
+      if (!hasMemberFilter) return true;
+      if (task.assignedTo && filters.members.has(task.assignedTo)) return true;
+      return false;
+    };
 
     // 회의 노드
     for (const mt of meetings) {
       if (!isInPeriod(mt?.date)) continue;
+
+      const participants = extractParticipants(mt.utterances || []);
+      const actionItems = mt.actionItems || [];
+
+      // 🔸 멤버 필터 적용
+      if (!meetingPassesMemberFilter(participants, actionItems)) continue;
+
       const linked = linkTasksToMeeting(mt, tasks);
 
       nodes.push({
         type: "meeting",
         id: mt.id || `meeting-${Math.random().toString(36).slice(2)}`,
-        time: toISOorNow(mt?.date), // <-- 안전 ISO
+        time: toISOorNow(mt?.date),
         title: (mt.summary || "회의").slice(0, 80),
         summary: mt.summary || "",
         utterances: mt.utterances || [],
         transcript: mt.transcript || mt.sttText || "",
-        actionItems: mt.actionItems || [],
+        actionItems,
         linkedTasks: linked.map((t) => t.id).filter(Boolean),
-        participants: extractParticipants(mt.utterances),
+        participants,
       });
     }
 
@@ -202,11 +272,13 @@ const FlowChain = () => {
       const created = t.createdAt || t.date || Date.now();
       if (!isInPeriod(created)) continue;
       if (linkedSet.has(id)) continue;
+      // 🔸 멤버 필터 적용
+      if (!taskPassesMemberFilter(t)) continue;
 
       nodes.push({
         type: "task",
         id,
-        time: toISOorNow(created), // <-- 안전 ISO
+        time: toISOorNow(created),
         title: t.title || "업무",
         assignedTo: t.assignedTo || null,
         dueDate: t.dueDate || null,
@@ -216,25 +288,27 @@ const FlowChain = () => {
       });
     }
 
-    // 정렬(ISO 문자열은 사전순=시간순 정렬)
+    // 시간 순 정렬
     nodes.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
     return nodes;
-  }, [meetings, tasks, filters.period]);
+  }, [meetings, tasks, filters.period, filters.members, memberOptions]);
 
-  // 숫자 요약
+  // 숫자 요약 (필터 적용된 타임라인 기준)
   const stats = useMemo(() => {
     const meetingCnt = timeline.filter((n) => n.type === "meeting").length;
-    const taskCnt = tasks.length;
+    const visibleTasks = timeline.filter((n) => n.type === "task");
+    const taskCnt = visibleTasks.length;
     const progressAvg =
-      tasks.length > 0
+      visibleTasks.length > 0
         ? Math.round(
-            tasks.reduce((acc, t) => acc + (t.progress ?? 0), 0) / tasks.length
+            visibleTasks.reduce((acc, t) => acc + (t.progress ?? 0), 0) /
+              visibleTasks.length
           )
         : 0;
     return { meetingCnt, taskCnt, progressAvg };
-  }, [timeline, tasks]);
+  }, [timeline]);
 
-  // 보고서 자동 생성
+  // 보고서 자동 생성 (필터 적용된 timeline 기반)
   const handleGenerateReport = async () => {
     try {
       setBusy(true);
@@ -299,6 +373,17 @@ const FlowChain = () => {
     win.print();
   };
 
+  const totalMembers = memberOptions.length;
+  const selectedCount = filters.members ? filters.members.size : 0;
+  const allState =
+    totalMembers === 0
+      ? "none"
+      : selectedCount === 0
+      ? "none"
+      : selectedCount === totalMembers
+      ? "all"
+      : "partial";
+
   return (
     <div className="flowchain-container">
       <div className="main-content">
@@ -341,33 +426,73 @@ const FlowChain = () => {
 
             <div className="filter-group">
               <label>멤버</label>
-              <div className="member-checkboxes">
-                {defaultMembers.map((m) => (
-                  <div key={m}>
-                    <input
-                      type="checkbox"
-                      id={m}
-                      checked={filters.members.has(m)}
-                      onChange={(e) => {
-                        const next = new Set(filters.members);
-                        if (e.target.checked) next.add(m);
-                        else next.delete(m);
-                        setFilters((f) => ({ ...f, members: next }));
-                      }}
-                    />
-                    <label htmlFor={m}>{m}</label>
-                  </div>
-                ))}
+
+              {/* 상단: 전체 필터 (All) */}
+              <div
+                className="member-all-row"
+                onClick={() => {
+                  setFilters((f) => {
+                    // 모두 선택되어 있으면 → 전체 해제
+                    if (allState === "all") {
+                      return { ...f, members: new Set() };
+                    }
+                    // 나머지(없음/부분 선택) → 전체 선택
+                    return { ...f, members: new Set(memberOptions) };
+                  });
+                }}
+              >
+                <span className={`checkbox-box checkbox-all-${allState}`} />
+                <span className="member-all-label">전체</span>
+                {totalMembers > 0 && (
+                  <span className="member-count">
+                    {selectedCount}/{totalMembers}
+                  </span>
+                )}
+              </div>
+
+              {/* 하단: 개별 멤버 */}
+              <div className="member-list">
+                {memberOptions.length === 0 ? (
+                  <p className="no-members">아직 추출된 멤버가 없습니다.</p>
+                ) : (
+                  memberOptions.map((name) => {
+                    const selected = filters.members?.has(name) ?? false;
+                    return (
+                      <div
+                        key={name}
+                        className="member-row"
+                        onClick={() => {
+                          setFilters((f) => {
+                            const next = new Set(f.members || []);
+                            if (next.has(name)) {
+                              next.delete(name);
+                            } else {
+                              next.add(name);
+                            }
+                            return { ...f, members: next };
+                          });
+                        }}
+                      >
+                        <span
+                          className={`checkbox-box ${
+                            selected ? "checkbox-checked" : "checkbox-unchecked"
+                          }`}
+                        />
+                        <span className="member-label">{name}</span>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
             <button
-              className="reset-filter-button"
+              className="reset-filter-button btn-secondary"
               onClick={() =>
                 setFilters({
                   project: "모든 프로젝트",
                   period: "전체",
-                  members: new Set(defaultMembers),
+                  members: new Set(memberOptions), // 멤버는 다시 전체 선택
                 })
               }
             >
@@ -443,6 +568,11 @@ const FlowChain = () => {
                 </div>
               );
             })}
+            {timeline.length === 0 && (
+              <p style={{ color: "#777", marginTop: 16 }}>
+                선택된 필터에 해당하는 타임라인이 없습니다.
+              </p>
+            )}
           </div>
         </div>
 
@@ -450,21 +580,21 @@ const FlowChain = () => {
         <div className="right-panel">
           <div className="export-options">
             <button
-              className="pdf-export"
+              className="btn-secondary"
               onClick={printMarkdown}
               disabled={!reportMarkdown}
             >
-              PDF 내보내기(프린트)
+              PDF 내보내기
             </button>
             <button
-              className="copy-link"
+              className="btn-secondary"
               onClick={copyMarkdown}
               disabled={!reportMarkdown}
             >
               마크다운 복사
             </button>
             <button
-              className="copy-link"
+              className="btn-primary"
               onClick={handleGenerateReport}
               disabled={busy}
             >
@@ -497,7 +627,7 @@ const FlowChain = () => {
                 {reports.slice(0, 6).map((r) => (
                   <button
                     key={r.id}
-                    className="export-button"
+                    className="btn-secondary"
                     onClick={() => setReportMarkdown(r.markdown)}
                     title={`${fmtDateTime(r.createdAt)} • ${r.project} • ${
                       r.period

@@ -55,17 +55,153 @@
   font-size: 15px;
 }
 
-.member-checkboxes div {
-  margin-bottom: 5px;
+/* 멤버 선택 영역을 버튼(칩) 형식으로 */
+.member-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
 }
 
-.member-checkboxes input[type="checkbox"] {
-  margin-right: 8px;
-  accent-color: #1890ff; /* 체크박스 색상 파란색으로 */
+/* 개별 멤버 버튼 */
+.member-chip {
+  border: 1px solid #d9d9d9;
+  background-color: #f5f5f5;
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: #555;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease, transform 0.05s ease;
 }
 
-.member-checkboxes label {
-  color: #555; /* 체크박스 라벨 색상 */
+.member-chip:hover {
+  background-color: #eaeaea;
+  transform: translateY(-1px);
+}
+
+/* 선택된 멤버 */
+.member-chip.selected {
+  background-color: #e6f7ff;
+  border-color: #1890ff;
+  color: #1890ff;
+  font-weight: 600;
+}
+
+/* ---- 멤버 필터: All + 개별 체크 ---- */
+
+.member-all-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.member-all-label {
+  font-size: 13px;
+  color: #262626;
+  font-weight: 500;
+}
+
+.member-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+/* 개별 멤버 행 */
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.member-label {
+  font-size: 13px;
+  color: #555;
+}
+
+/* 공통 체크박스 박스 */
+.checkbox-box {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid #d9d9d9;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  background-color: #fff;
+}
+
+/* 개별 멤버: 선택/비선택 */
+.checkbox-unchecked {
+  background-color: #fff;
+}
+
+.checkbox-checked {
+  background-color: #1890ff;
+  border-color: #1890ff;
+  color: #fff;
+}
+
+.checkbox-checked::before {
+  content: "✓";
+}
+
+/* All 라인: 전체 상태(all) */
+.checkbox-all-all {
+  background-color: #1890ff;
+  border-color: #1890ff;
+  color: #fff;
+}
+
+.checkbox-all-all::before {
+  content: "✓";
+}
+
+/* All 라인: 일부 선택(partial) → 파란 네모 + - 아이콘 */
+.checkbox-all-partial {
+  background-color: #1890ff;
+  border-color: #1890ff;
+  position: relative;
+}
+
+.checkbox-all-partial::before {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 2px;
+  background-color: #fff;
+  border-radius: 1px;
+}
+
+/* All 라인: 아무도 선택 안 된 상태(none) */
+.checkbox-all-none {
+  background-color: #fff;
+}
+
+/* hover 효과 */
+.member-all-row:hover .checkbox-box,
+.member-row:hover .checkbox-box {
+  border-color: #1890ff;
+}
+.member-row:hover .member-label,
+.member-all-row:hover .member-all-label {
+  color: #1890ff;
 }
 
 .reset-filter-button {

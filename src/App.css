@@ -1,7 +1,7 @@
 .app-container {
   display: flex;
   height: 100vh;
-  font-family: 'Noto Sans KR', sans-serif;
+  font-family: "Noto Sans KR", sans-serif;
 }
 
 .left-sidebar {
@@ -31,18 +31,19 @@
 .left-sidebar li a {
   display: block;
   padding: 12px 20px;
-  color: #333; /* Darker text for menu items */
+  color: #333;
   text-decoration: none;
   font-size: 16px;
   transition: background-color 0.3s ease;
 }
 
+/* hover 또는 active 시 */
 .left-sidebar li a:hover,
 .left-sidebar li a.active {
-  background-color: #e6f7ff; /* Light blue on hover/active */
-  color: #1890ff; /* Blue text on hover/active */
-  border-left: 4px solid #1890ff; /* Blue highlight */
-  padding-left: 16px; /* Adjust padding due to border */
+  background-color: #e6f7ff;
+  color: #1890ff;
+  border-left: 4px solid #1890ff;
+  padding-left: 16px;
 }
 
 .content-area {

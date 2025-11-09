@@ -68,6 +68,7 @@ const TeamAutoMatching = () => {
           <div className="panel-header">
             <h1>팀 오토 매칭</h1>
             <p>역할 ∙ 시간대 ∙ 선호 태그 기반 추천</p>
+            <button className="btn-primary">추천 실행</button>
           </div>
 
           <div className="filters">

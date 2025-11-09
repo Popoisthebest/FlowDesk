@@ -1,6 +1,14 @@
+// src/App.js
 import React from "react";
 import "./App.css";
-import { BrowserRouter as Router, Route, Routes, Link } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Route,
+  Routes,
+  NavLink,
+  Navigate,
+} from "react-router-dom";
+
 import AIMeetingAssistant from "./pages/AIMeetingAssistant";
 import ActionSense from "./pages/ActionSense";
 import TeamAutoMatching from "./pages/TeamAutoMatching";
@@ -12,32 +20,76 @@ function App() {
   return (
     <Router>
       <div className="app-container">
+        {/* 왼쪽 사이드바 */}
         <nav className="left-sidebar">
           <div className="logo">FlowDesk</div>
           <ul>
             <li>
-              <Link to="/ai-meeting-assistant">AI 회의 비서</Link>
+              <NavLink
+                to="/ai-meeting-assistant"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                end
+              >
+                AI 회의 비서
+              </NavLink>
             </li>
             <li>
-              <Link to="/actionsense">ActionSense</Link>
+              <NavLink
+                to="/actionsense"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                end
+              >
+                ActionSense
+              </NavLink>
             </li>
             <li>
-              <Link to="/team-auto-matching">팀 오토 매칭</Link>
+              <NavLink
+                to="/flowchain"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                end
+              >
+                FlowChain
+              </NavLink>
             </li>
             <li>
-              <Link to="/flowchain">FlowChain</Link>
+              <NavLink
+                to="/team-auto-matching"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                end
+              >
+                팀 오토 매칭
+              </NavLink>
             </li>
             <li>
-              <Link to="/ai-scheduler">AI 일정 비서</Link>
+              <NavLink
+                to="/ai-scheduler"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                end
+              >
+                AI 일정 비서
+              </NavLink>
             </li>
             <li>
-              <Link to="/reward-insight">보너스 리워드 지표</Link>
+              <NavLink
+                to="/reward-insight"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                end
+              >
+                보너스 리워드 지표
+              </NavLink>
             </li>
           </ul>
         </nav>
 
+        {/* 오른쪽 콘텐츠 영역 */}
         <main className="content-area">
           <Routes>
+            {/* 기본 진입 시 AI 회의 비서로 리다이렉트 */}
+            <Route
+              path="/"
+              element={<Navigate to="/ai-meeting-assistant" replace />}
+            />
+
             <Route
               path="/ai-meeting-assistant"
               element={<AIMeetingAssistant />}
