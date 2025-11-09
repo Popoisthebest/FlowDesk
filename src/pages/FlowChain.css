@@ -263,6 +263,7 @@
 .card-content .time {
   font-size: 11px;
   color: #9ca3af;
+  margin-top: 0;
   margin-bottom: 4px;
 }
 

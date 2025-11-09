@@ -1,19 +1,28 @@
 // src/pages/ActionSense.js
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import "./ActionSense.css";
 import { extractActionItems } from "../utils/openaiApi";
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db } from "../firebase";
 
 /**
  * ActionSense
  * - 채팅 메시지에서 행동 유발 문장 감지 → 업무 카드 생성 제안/자동등록
  * - 룰 기반 + (옵션) LLM 보강
- * - localStorage 지속화
+ * - 채팅: Firebase Firestore 사용
+ * - 업무 카드(tasks): localStorage 유지
  */
 
-/* ===== 옵션 ===== */
-const ENABLE_LLM_FALLBACK = true; // OpenAI 키 설정 시, 저신뢰 메시지에 대해 보강 분석
+const ENABLE_LLM_FALLBACK = true;
 
-/* ===== Date utils ===== */
+/* ===== Date utils (기존 그대로) ===== */
 function pad2(n) {
   return n < 10 ? `0${n}` : `${n}`;
 }
@@ -34,7 +43,6 @@ function endOfWeek(d) {
   x.setHours(0, 0, 0, 0);
   return x;
 }
-// 요일 매핑(0=일, 1=월, ... 6=토)
 function parseWeekdayToken(token) {
   const map = {
     일: 0,
@@ -59,7 +67,7 @@ function nextWeekdayDate(from, targetDow, { allowToday = false } = {}) {
   const cur = d.getDay();
   let diff = targetDow - cur;
   if (diff < 0) diff += 7;
-  if (diff === 0 && !allowToday) diff = 7; // 오늘 요일이면 다음주로(보수적)
+  if (diff === 0 && !allowToday) diff = 7;
   const candidate = new Date(d);
   candidate.setDate(d.getDate() + diff);
   candidate.setHours(0, 0, 0, 0);
@@ -75,7 +83,6 @@ function ensureFutureDate(
   date,
   { allowToday = true, pastMeansNextYear = true } = {}
 ) {
-  // date가 base보다 과거면 내년으로 롤오버(단, '지난' 키워드가 있으면 제외)
   const b = startOfDay(base);
   const t = startOfDay(date);
   if (t < b) {
@@ -93,7 +100,6 @@ function ensureFutureDate(
   return t;
 }
 
-// 한국어 자연어에서 날짜를 뽑아 YMD로. 실패 시 null (보수적 파싱)
 function normalizeDateKorean(str, now = new Date()) {
   if (!str) return null;
   const text = str.trim();
@@ -101,7 +107,6 @@ function normalizeDateKorean(str, now = new Date()) {
 
   const hasPastMarker = /(지난|지난주|지난달|작년|전년)/.test(text);
 
-  // 1) 상대 표현
   if (/오늘|EOD|오늘\s*마감|오늘\s*까지/i.test(text)) {
     return toYMD(today);
   }
@@ -121,7 +126,6 @@ function normalizeDateKorean(str, now = new Date()) {
     return toYMD(d);
   }
   if (/이번\s*주\s*말|EOW|주말\s*까지/i.test(text)) {
-    // 이번 주 토요일
     const eow = endOfWeek(today);
     return toYMD(eow);
   }
@@ -129,7 +133,6 @@ function normalizeDateKorean(str, now = new Date()) {
     return toYMD(lastDayOfMonth(today));
   }
 
-  // 2) 주차 + 요일 (이번주/다음주/내주/차주/다다음주)
   const wk = text.match(
     /(이번\s*주|다음\s*주|내주|차주|다다음\s*주)\s*(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)/
   );
@@ -144,13 +147,11 @@ function normalizeDateKorean(str, now = new Date()) {
       if (/다다음\s*주/.test(weekWord)) addWeeks = 2;
       base.setDate(base.getDate() + addWeeks * 7);
       const d = nextWeekdayDate(base, targetDow, { allowToday: true });
-      // '이번주 금요일'인데 이미 지났으면 다음주로
       if (toYMD(d) < toYMD(today)) d.setDate(d.getDate() + 7);
       return toYMD(d);
     }
   }
 
-  // 3) 요일 단독 (금요일 등) → 항상 **다가오는** 해당 요일
   const wd = text.match(
     /\b(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)\b/
   );
@@ -162,7 +163,6 @@ function normalizeDateKorean(str, now = new Date()) {
     }
   }
 
-  // 4) 년/월/일 명시 (YYYY.MM.DD, YYYY-MM-DD)
   let m = text.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
   if (m) {
     const y = +m[1],
@@ -170,7 +170,6 @@ function normalizeDateKorean(str, now = new Date()) {
       da = +m[3];
     const dt = new Date(y, mo, da);
     if (!isNaN(dt)) {
-      // 과거 날짜면 그대로 두지만, '지난' 표시가 없고 현재년도와 같다면 내년으로 롤오버
       const candidate = ensureFutureDate(today, dt, {
         allowToday: true,
         pastMeansNextYear: !hasPastMarker && y === today.getFullYear(),
@@ -179,7 +178,6 @@ function normalizeDateKorean(str, now = new Date()) {
     }
   }
 
-  // 5) 월/일 (올해 기준, 과거면 내년으로 롤오버)
   m = text.match(/\b(\d{1,2})[.\-\/](\d{1,2})\b/);
   if (m) {
     const y = today.getFullYear();
@@ -195,7 +193,6 @@ function normalizeDateKorean(str, now = new Date()) {
     }
   }
 
-  // 6) "이번달/다음달 M월 D일" 또는 "M월 D일"
   m = text.match(
     /(?:(이번\s*달|다음\s*달)\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일/
   );
@@ -219,11 +216,10 @@ function normalizeDateKorean(str, now = new Date()) {
     }
   }
 
-  // 7) “by/까지” 뒤에 날짜 토큰이 붙은 케이스는 위에서 소거됨. 남은 경우는 모호 → null
   return null;
 }
 
-/* ===== 핵심 분석기(룰 기반) ===== */
+/* ===== 핵심 분석기(룰 기반) (기존 그대로) ===== */
 function analyzeMessageRuleBased(text, now = new Date()) {
   const original = text;
   text = (text || "").trim();
@@ -248,7 +244,6 @@ function analyzeMessageRuleBased(text, now = new Date()) {
   const intent = actionVerbs.some((r) => r.test(text)) || /^\/todo/i.test(text);
   if (!intent) return { isAction: false };
 
-  // 담당자
   let assignedTo = null;
   const mHandle = text.match(/@([가-힣A-Za-z0-9_]+)/);
   if (mHandle) assignedTo = mHandle[1];
@@ -261,11 +256,8 @@ function analyzeMessageRuleBased(text, now = new Date()) {
     if (m2) assignedTo = m2[1];
   }
 
-  // 기한 (보수적 파싱)
   let dueDate = null;
-  // 1) 문장 전체에서 확정적 날짜 표현 탐색
   dueDate = normalizeDateKorean(text, now);
-  // 2) 'by/까지' 뒤쪽에 날짜가 따로 오는 경우는 거기서도 한 번 더 시도
   if (!dueDate) {
     const afterBy = text.match(/(?:\bby\b|까지)\s*([^.,;]+)/i);
     if (afterBy) {
@@ -274,19 +266,15 @@ function analyzeMessageRuleBased(text, now = new Date()) {
       if (norm) dueDate = norm;
     }
   }
-  // 3) 못 찾으면 null 유지 (모호한 날짜 추정 금지)
 
-  // 우선순위
   let priority = "보통";
   if (/긴급|급함|핫픽스|최우선|P0/.test(text)) priority = "높음";
   else if (/우선|상|P1/.test(text)) priority = "높음";
   else if (/중|P2/.test(text)) priority = "보통";
   else if (/하|P3|나중에/.test(text)) priority = "낮음";
 
-  // 태그
   const tags = Array.from(text.matchAll(/#([^\s#]+)/g)).map((m) => m[1]);
 
-  // 제목
   let title = original
     .replace(/^\/todo\s*/i, "")
     .replace(/\s{2,}/g, " ")
@@ -308,9 +296,10 @@ function analyzeMessageRuleBased(text, now = new Date()) {
   };
 }
 
-/* ===== 로컬스토리지 ===== */
-const LS_CHAT = "actionsense_chat_v1";
+/* ===== 로컬스토리지: tasks만 유지 ===== */
 const LS_TASKS = "actionsense_tasks_v1";
+const LS_USER_NAME = "actionsense_user_name";
+
 function loadLS(key, def) {
   try {
     return JSON.parse(localStorage.getItem(key)) ?? def;
@@ -326,15 +315,8 @@ function saveLS(key, val) {
 
 /* ===== 컴포넌트 ===== */
 const ActionSense = () => {
-  const [messages, setMessages] = useState(() =>
-    loadLS(LS_CHAT, [
-      {
-        id: "sys1",
-        role: "system",
-        text: "ActionSense가 채팅을 분석해 업무 등록을 제안합니다. 예: “@민준 이번주 금요일까지 백엔드 배포 준비 부탁 #배포 #우선”",
-      },
-    ])
-  );
+  // 메시지는 Firestore에서만 관리
+  const [messages, setMessages] = useState([]);
   const [tasks, setTasks] = useState(() => loadLS(LS_TASKS, []));
   const [input, setInput] = useState("");
   const [draft, setDraft] = useState(null);
@@ -342,29 +324,119 @@ const ActionSense = () => {
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
 
-  // UI용 채널 탭 (실제 필터링은 아직 X)
   const [channel, setChannel] = useState("#general");
   const channels = ["#general", "#dev", "#design"];
 
+  // 👉 사용자 이름 (처음에 한 번 입력)
+  const [userName, setUserName] = useState(() => {
+    const saved = loadLS(LS_USER_NAME, null);
+    return typeof saved === "string" ? saved : "";
+  });
+  const [nameInput, setNameInput] = useState(() => {
+    const saved = loadLS(LS_USER_NAME, null);
+    return typeof saved === "string" ? saved : "";
+  });
+
+  const isNameReady = !!userName;
+
+  // Firestore 구독
   useEffect(() => {
-    saveLS(LS_CHAT, messages);
-  }, [messages]);
+    const colRef = collection(db, "actionSenseMessages");
+    const q = query(colRef, orderBy("createdAt", "asc"));
+
+    const unsub = onSnapshot(q, async (snap) => {
+      if (snap.empty) {
+        // 첫 실행 시 시스템 메시지 1개 삽입
+        const sysMsg = {
+          role: "system",
+          text: "ActionSense가 채팅을 분석해 업무 등록을 제안합니다. 예: “@민준 이번주 금요일까지 백엔드 배포 준비 부탁 #배포 #우선”",
+          channel: "#general",
+          authorName: "ActionSense",
+          createdAt: serverTimestamp(),
+        };
+        await addDoc(colRef, sysMsg);
+        return;
+      }
+
+      const list = snap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          role: data.role || "user",
+          text: data.text || "",
+          channel: data.channel || "#general",
+          suggestion: data.suggestion || null,
+          authorName: data.authorName || null,
+          createdAt: data.createdAt,
+        };
+      });
+      setMessages(list);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // tasks는 여전히 localStorage에 저장
   useEffect(() => {
     saveLS(LS_TASKS, tasks);
   }, [tasks]);
+
+  // 메시지/모달 변화시 맨 아래로 스크롤
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, modalOpen]);
 
-  const addMessage = (role, text, meta = {}) => {
-    const msg = {
-      id: `m-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  // 현재 채널의 메시지 + 중복 방지 (같은 시각, 같은 내용이면 1개로)
+  const visibleMessages = useMemo(() => {
+    const filtered = messages.filter(
+      (m) => !m.channel || m.channel === channel
+    );
+
+    const deduped = [];
+    for (const m of filtered) {
+      const last = deduped[deduped.length - 1];
+      const curSeconds = m.createdAt?.seconds ?? null;
+      const lastSeconds = last?.createdAt?.seconds ?? null;
+      const almostSameTime =
+        curSeconds != null &&
+        lastSeconds != null &&
+        Math.abs(curSeconds - lastSeconds) <= 1;
+
+      if (
+        last &&
+        almostSameTime &&
+        last.text === m.text &&
+        last.role === m.role &&
+        (last.authorName || "") === (m.authorName || "")
+      ) {
+        // 중복으로 보이는 경우 스킵
+        continue;
+      }
+      deduped.push(m);
+    }
+
+    return deduped;
+  }, [messages, channel]);
+
+  // Firestore에 메시지 추가
+  const addMessage = async (role, text, meta = {}) => {
+    const displayName =
+      meta.authorName ||
+      (role === "user"
+        ? userName || "나"
+        : role === "assistant"
+        ? "ActionSense"
+        : "시스템");
+
+    const payload = {
       role,
       text,
-      ...meta,
+      channel: meta.channel || channel,
+      suggestion: meta.suggestion || null,
+      authorName: displayName,
+      createdAt: serverTimestamp(),
     };
-    setMessages((prev) => [...prev, msg]);
-    return msg;
+    await addDoc(collection(db, "actionSenseMessages"), payload);
   };
 
   const addTask = (payload) => {
@@ -384,14 +456,20 @@ const ActionSense = () => {
     return t;
   };
 
-  const onAcceptSuggestion = (suggestion) => {
+  const onAcceptSuggestion = async (suggestion) => {
     const t = addTask({
       ...suggestion.extracted,
       description: `채팅에서 자동 생성됨: “${
         suggestion.preview || suggestion.extracted.title
       }”`,
     });
-    addMessage("system", `✅ 업무로 등록했습니다: #${t.id} (${t.title})`);
+    await addMessage(
+      "system",
+      `✅ 업무로 등록했습니다: #${t.id} (${t.title})`,
+      {
+        authorName: "ActionSense",
+      }
+    );
   };
 
   const onOpenModal = (suggestion) => {
@@ -399,15 +477,21 @@ const ActionSense = () => {
     setModalOpen(true);
   };
 
-  const onSubmitDraft = () => {
-    addTask({ ...draft, description: `수정 후 등록됨: “${draft.title}”` });
+  const onSubmitDraft = async () => {
+    const t = addTask({
+      ...draft,
+      description: `수정 후 등록됨: “${draft.title}”`,
+    });
     setModalOpen(false);
     setDraft(null);
-    addMessage("system", "✅ 수정한 내용으로 업무를 등록했어요.");
+    await addMessage(
+      "system",
+      `✅ 수정한 내용으로 업무를 등록했어요. (#${t.id})`,
+      { authorName: "ActionSense" }
+    );
   };
 
   const runAnalyzerOnMessage = async (text) => {
-    // 1) 룰 기반 분석
     const rb = analyzeMessageRuleBased(text, new Date());
     if (rb.isAction) {
       const { extracted, confidence } = rb;
@@ -417,35 +501,35 @@ const ActionSense = () => {
         extracted.priority ? ` / 우선순위:${extracted.priority}` : ""
       }${extracted.tags?.length ? ` / #${extracted.tags.join(" #")}` : ""}`;
 
-      addMessage("assistant", "💡 업무로 등록할까요?", {
+      await addMessage("assistant", "💡 업무로 등록할까요?", {
         suggestion: { extracted, confidence, preview },
+        authorName: "ActionSense",
       });
 
-      // 고신뢰 자동 등록
       if (confidence >= 0.95) {
         const t = addTask({
           ...extracted,
           description: `고신뢰 자동생성: “${extracted.title}”`,
         });
-        addMessage(
+        await addMessage(
           "system",
-          `⚡ 고신뢰 감지로 자동 등록: #${t.id} (${t.title})`
+          `⚡ 고신뢰 감지로 자동 등록: #${t.id} (${t.title})`,
+          { authorName: "ActionSense" }
         );
         return;
       }
 
-      // 신뢰도 낮으면 LLM 보강 시도
       if (ENABLE_LLM_FALLBACK && confidence < 0.8) {
         try {
           setBusy(true);
-          const ai = await extractActionItems(text); // 단일 문장도 처리 가능
+          const ai = await extractActionItems(text);
           if (Array.isArray(ai) && ai.length > 0) {
             const a = ai[0];
             const llmExtracted = {
               title: a.text || extracted.title,
               assignedTo: a.assignedTo || extracted.assignedTo,
               dueDate: a.dueDate || extracted.dueDate,
-              priority: extracted.priority, // LLM 출력엔 우선순위가 없을 수 있으니 유지
+              priority: extracted.priority,
               tags: extracted.tags,
             };
             const llmPreview = `${llmExtracted.title} ${
@@ -462,12 +546,13 @@ const ActionSense = () => {
                 : ""
             }`;
 
-            addMessage("assistant", "🤖 보강 분석 제안:", {
+            await addMessage("assistant", "🤖 보강 분석 제안:", {
               suggestion: {
                 extracted: llmExtracted,
                 confidence: Math.max(confidence, 0.85),
                 preview: llmPreview,
               },
+              authorName: "ActionSense",
             });
           }
         } catch (e) {
@@ -479,7 +564,6 @@ const ActionSense = () => {
       return;
     }
 
-    // 룰 기반 미감지 → LLM으로 마지막 시도 (옵션)
     if (ENABLE_LLM_FALLBACK) {
       try {
         setBusy(true);
@@ -497,8 +581,9 @@ const ActionSense = () => {
             extracted.assignedTo ? ` / 담당:${extracted.assignedTo}` : ""
           }${extracted.dueDate ? ` / 기한:${extracted.dueDate}` : ""}`;
 
-          addMessage("assistant", "💡 업무로 등록할까요? (AI 감지)", {
+          await addMessage("assistant", "💡 업무로 등록할까요? (AI 감지)", {
             suggestion: { extracted, confidence: 0.8, preview },
+            authorName: "ActionSense",
           });
           return;
         }
@@ -512,8 +597,12 @@ const ActionSense = () => {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || busy) return;
-    addMessage("user", text, { from: "나", channel });
+    if (!text || busy || !isNameReady) return;
+
+    await addMessage("user", text, {
+      channel,
+      authorName: userName || "나",
+    });
     setInput("");
     await runAnalyzerOnMessage(text);
   };
@@ -525,6 +614,13 @@ const ActionSense = () => {
     "PR 리뷰 좀 부탁, 오늘 안에 #리뷰",
     "/todo 데이터 파이프라인 점검: 다음주 수, 담당 은혁, P1 #데이터",
   ];
+
+  const handleSaveName = () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed) return;
+    setUserName(trimmed);
+    saveLS(LS_USER_NAME, trimmed);
+  };
 
   return (
     <div className="actionsense-container">
@@ -555,6 +651,35 @@ const ActionSense = () => {
       <div className="as-main">
         {/* 왼쪽: 채팅 + 제안 */}
         <section className="as-chat-card">
+          {/* 👉 이름 설정 영역 */}
+          <div className="as-name-setup">
+            <div className="as-name-setup-label">
+              <span className="as-name-dot">●</span>
+              <span>
+                내 이름{" "}
+                <span className="as-name-hint">(채팅에 표시될 이름)</span>
+              </span>
+            </div>
+            <div className="as-name-setup-row">
+              <input
+                type="text"
+                className="as-name-input"
+                placeholder="예) 재민, Minjun"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+              />
+              <button className="btn-secondary" onClick={handleSaveName}>
+                적용
+              </button>
+            </div>
+            {!isNameReady && (
+              <p className="as-name-warning">
+                채팅을 시작하려면 먼저 이름을 입력해 주세요.
+              </p>
+            )}
+          </div>
+
           <div className="as-chat-header">
             <div className="as-channel-tabs">
               {channels.map((ch) => (
@@ -576,38 +701,59 @@ const ActionSense = () => {
             </p>
           </div>
 
+          {/* 채팅 메시지 렌더링 */}
           <div className="as-chat-messages">
-            {messages.map((m) => (
-              <div key={m.id} className={`as-message as-${m.role || "user"}`}>
-                <div className="as-bubble">
-                  <p className="as-message-text">{m.text}</p>
-                  {m.suggestion && (
-                    <div className="as-suggestion">
-                      <div className="as-suggestion-summary">
-                        <strong>제안:</strong> {m.suggestion.preview}
-                        <span className="as-conf">
-                          신뢰도 {(m.suggestion.confidence * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                      <div className="as-suggestion-actions">
-                        <button
-                          className="btn-primary"
-                          onClick={() => onAcceptSuggestion(m.suggestion)}
-                        >
-                          바로 등록
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          onClick={() => onOpenModal(m.suggestion)}
-                        >
-                          수정 후 등록
-                        </button>
-                      </div>
+            {visibleMessages.map((m) => {
+              const isMine = m.role === "user" && m.authorName === userName;
+
+              return (
+                <div
+                  key={m.id}
+                  className={`as-message ${
+                    isMine ? "my-message" : "other-message"
+                  }`}
+                >
+                  <div className="as-bubble">
+                    <div className="as-message-meta">
+                      <span className="as-author-pill">
+                        {m.authorName ||
+                          (m.role === "user"
+                            ? "사용자"
+                            : m.role === "assistant"
+                            ? "ActionSense"
+                            : "시스템")}
+                      </span>
                     </div>
-                  )}
+                    <p className="as-message-text">{m.text}</p>
+
+                    {m.suggestion && (
+                      <div className="as-suggestion">
+                        <div className="as-suggestion-summary">
+                          <strong>제안:</strong> {m.suggestion.preview}
+                          <span className="as-conf">
+                            신뢰도 {(m.suggestion.confidence * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="as-suggestion-actions">
+                          <button
+                            className="btn-primary"
+                            onClick={() => onAcceptSuggestion(m.suggestion)}
+                          >
+                            바로 등록
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            onClick={() => onOpenModal(m.suggestion)}
+                          >
+                            수정 후 등록
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={endRef} />
           </div>
 
@@ -615,16 +761,20 @@ const ActionSense = () => {
             <input
               type="text"
               className="as-chat-input"
-              placeholder="메시지를 입력하세요…  예) @민준 내일까지 배포 준비 부탁 #배포"
+              placeholder={
+                isNameReady
+                  ? "메시지를 입력하세요…  예) @민준 내일까지 배포 준비 부탁 #배포"
+                  : "먼저 위에서 내 이름을 설정해 주세요."
+              }
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              disabled={busy}
+              disabled={busy || !isNameReady}
             />
             <button
               className="btn-primary as-send-button"
               onClick={handleSend}
-              disabled={busy}
+              disabled={busy || !isNameReady}
             >
               보내기
             </button>

@@ -24,11 +24,29 @@ const AIMeetingAssistant = () => {
   const [summary, setSummary] = useState("");
   const [actionItems, setActionItems] = useState([]);
 
+  const [meetingRecords, setMeetingRecords] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
   const mediaStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
   const recognitionRef = useRef(null);
+
+  // ----- 초기 로드 시 localStorage에서 회의 기록 불러오기 -----
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("meetingRecords");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setMeetingRecords(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn("meetingRecords 불러오기 실패:", e);
+    }
+  }, []);
 
   // 녹음 타이머
   useEffect(() => {
@@ -45,7 +63,7 @@ const AIMeetingAssistant = () => {
     };
   }, [isRecording]);
 
-  // Web Speech API: 실시간 캡션(UX용, 최종 텍스트는 STT 결과 사용)
+  // Web Speech API: 실시간 캡션(UX용)
   useEffect(() => {
     const w = window;
     if ("SpeechRecognition" in w || "webkitSpeechRecognition" in w) {
@@ -66,7 +84,6 @@ const AIMeetingAssistant = () => {
           }
         }
         if (finalTranscript) {
-          // 최종 문장은 녹음 종료 후 STT로 처리할 거라 여기서는 초기화만
           setInterim("");
         }
       };
@@ -153,38 +170,55 @@ const AIMeetingAssistant = () => {
             setDialogue(utterances);
 
             // 3) 요약
+            let summaryText = "";
             try {
               const sum = await generateSummary(transcript);
-              if (sum) setSummary(sum);
+              if (sum) {
+                summaryText = sum;
+                setSummary(sum);
+              } else {
+                setSummary("");
+              }
             } catch (e) {
               console.warn("generateSummary error:", e);
+              setSummary("");
             }
 
             // 4) 액션 아이템
+            let actionList = [];
             try {
               const items = await extractActionItems(transcript);
-              if (items) setActionItems(items);
+              if (items && Array.isArray(items)) {
+                actionList = items;
+                setActionItems(items);
+              } else {
+                setActionItems([]);
+              }
             } catch (e) {
               console.warn("extractActionItems error:", e);
+              setActionItems([]);
             }
 
-            // 5) 기록 저장
+            // 5) 회의 기록 저장 (localStorage + state)
             try {
               const record = {
                 id: `meeting-${Date.now()}`,
+                createdAt: Date.now(),
                 date: new Date().toLocaleString(),
                 transcript,
                 utterances,
-                summary,
-                actionItems,
+                summary: summaryText,
+                actionItems: actionList,
               };
+
               const existing =
                 JSON.parse(localStorage.getItem("meetingRecords") || "[]") ||
                 [];
-              localStorage.setItem(
-                "meetingRecords",
-                JSON.stringify([...(existing || []), record])
-              );
+
+              const updated = [...existing, record];
+
+              localStorage.setItem("meetingRecords", JSON.stringify(updated));
+              setMeetingRecords(updated);
             } catch (e) {
               console.warn("localStorage save error:", e);
             }
@@ -233,6 +267,65 @@ const AIMeetingAssistant = () => {
     }
   };
 
+  // ----- 최근 회의 기록 불러오기 -----
+
+  const handleOpenHistory = () => {
+    setShowHistory(true);
+  };
+
+  const handleCloseHistory = () => {
+    setShowHistory(false);
+  };
+
+  const handleLoadRecord = (record) => {
+    // 녹음/분석 중이면 정리
+    setIsRecording(false);
+    setIsProcessing(false);
+    try {
+      recognitionRef.current && recognitionRef.current.stop();
+    } catch (_) {}
+    cleanupMedia();
+
+    // 저장된 내용 UI에 반영
+    if (record.utterances && record.utterances.length > 0) {
+      setDialogue(record.utterances);
+    } else if (record.transcript) {
+      setDialogue([{ speaker: "발화자1", text: record.transcript }]);
+    } else {
+      setDialogue([]);
+    }
+
+    // ✅ 핵심 요약 불러오기
+    if (record.summary && record.summary.trim().length > 0) {
+      setSummary(record.summary);
+    } else if (record.summaryText && record.summaryText.trim().length > 0) {
+      // 혹시 summaryText로 저장된 과거 데이터 대응
+      setSummary(record.summaryText);
+    } else {
+      setSummary("");
+    }
+
+    // ✅ 액션 아이템 불러오기
+    if (Array.isArray(record.actionItems)) {
+      setActionItems(record.actionItems);
+    } else if (Array.isArray(record.actionItemResult)) {
+      // 예전 버전에서 actionItemResult로 저장된 경우도 대응
+      setActionItems(record.actionItemResult);
+    } else {
+      setActionItems([]);
+    }
+
+    // 모달 닫기
+    setShowHistory(false);
+  };
+
+  const sortedMeetingRecords = React.useMemo(() => {
+    const arr = Array.isArray(meetingRecords) ? meetingRecords : [];
+    return [...arr].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [meetingRecords]);
+
+  // ----- 통계 -----
+
   const participantCount = React.useMemo(() => {
     const set = new Set();
     dialogue.forEach((u) => {
@@ -278,7 +371,7 @@ const AIMeetingAssistant = () => {
         <button
           className="header-history-button"
           type="button"
-          onClick={() => alert("회의 기록 보기 기능은 추후 연결 예정입니다.")}
+          onClick={handleOpenHistory}
         >
           최근 회의 기록
         </button>
@@ -495,6 +588,66 @@ const AIMeetingAssistant = () => {
           </div>
         </section>
       </div>
+
+      {/* ====== 최근 회의 기록 모달 ====== */}
+      {showHistory && (
+        <div className="meeting-history-backdrop">
+          <div className="meeting-history-modal">
+            <div className="meeting-history-header">
+              <h3>최근 회의 기록</h3>
+              <button
+                type="button"
+                className="history-close-btn"
+                onClick={handleCloseHistory}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="meeting-history-subtitle">
+              저장된 회의 중 하나를 선택하면, 해당 녹취록과 요약이 아래 화면에
+              불러와집니다.
+            </p>
+
+            <div className="meeting-history-list">
+              {sortedMeetingRecords.length === 0 ? (
+                <p className="meeting-history-empty">
+                  아직 저장된 회의 기록이 없습니다.
+                </p>
+              ) : (
+                sortedMeetingRecords.map((rec) => (
+                  <button
+                    key={rec.id}
+                    type="button"
+                    className="meeting-history-item"
+                    onClick={() => handleLoadRecord(rec)}
+                  >
+                    <div className="history-item-main">
+                      <p className="history-item-title">
+                        {rec.summary
+                          ? rec.summary.slice(0, 32) +
+                            (rec.summary.length > 32 ? "…" : "")
+                          : rec.transcript
+                          ? rec.transcript.slice(0, 32) +
+                            (rec.transcript.length > 32 ? "…" : "")
+                          : "제목 없는 회의"}
+                      </p>
+                      <p className="history-item-date">{rec.date}</p>
+                    </div>
+                    <div className="history-item-meta">
+                      <span>
+                        발화 {rec.utterances ? rec.utterances.length : 0}줄
+                      </span>
+                      <span>
+                        액션 {rec.actionItems ? rec.actionItems.length : 0}개
+                      </span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

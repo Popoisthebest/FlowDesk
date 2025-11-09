@@ -575,3 +575,120 @@
   background: rgba(148, 163, 184, 0.6);
   border-radius: 999px;
 }
+
+/* ===== 최근 회의 기록 모달 ===== */
+
+.meeting-history-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 40;
+}
+
+.meeting-history-modal {
+  width: 520px;
+  max-width: calc(100% - 32px);
+  max-height: 70vh;
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+  padding: 16px 18px 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.meeting-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.meeting-history-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.history-close-btn {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.history-close-btn:hover {
+  color: #111827;
+}
+
+.meeting-history-subtitle {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.meeting-history-list {
+  margin-top: 4px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.meeting-history-list::-webkit-scrollbar {
+  width: 6px;
+}
+.meeting-history-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.7);
+  border-radius: 999px;
+}
+
+.meeting-history-item {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+}
+
+.meeting-history-item:hover {
+  background: #eff6ff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transform: translateY(-1px);
+}
+
+.history-item-main {
+  flex: 1;
+}
+
+.history-item-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.history-item-date {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.history-item-meta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  color: #4b5563;
+  text-align: right;
+}
