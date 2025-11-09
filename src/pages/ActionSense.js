@@ -342,6 +342,10 @@ const ActionSense = () => {
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
 
+  // UI용 채널 탭 (실제 필터링은 아직 X)
+  const [channel, setChannel] = useState("#general");
+  const channels = ["#general", "#dev", "#design"];
+
   useEffect(() => {
     saveLS(LS_CHAT, messages);
   }, [messages]);
@@ -509,7 +513,7 @@ const ActionSense = () => {
   const handleSend = async () => {
     const text = input.trim();
     if (!text || busy) return;
-    addMessage("user", text, { from: "나" });
+    addMessage("user", text, { from: "나", channel });
     setInput("");
     await runAnalyzerOnMessage(text);
   };
@@ -524,48 +528,68 @@ const ActionSense = () => {
 
   return (
     <div className="actionsense-container">
-      <div className="main-content">
-        <nav className="left-nav">
-          <ul>
-            <li>
-              <a href="#room" className="active">
-                # general
-              </a>
-            </li>
-            <li>
-              <a href="#dev"># dev</a>
-            </li>
-            <li>
-              <a href="#design"># design</a>
-            </li>
-          </ul>
-        </nav>
-
-        <div className="chat-panel">
-          <div className="chat-header">
-            <h1>ActionSense</h1>
-            <p className="hint">
-              대화 속 업무를 자동으로 감지해 카드로 등록합니다.
+      {/* 헤더 */}
+      <header className="as-header">
+        <div className="as-header-left">
+          <div className="as-icon-wrapper">
+            <span className="as-icon-zap">⚡</span>
+          </div>
+          <div>
+            <h2 className="as-title">ActionSense</h2>
+            <p className="as-subtitle">
+              채팅 속 “해야 할 일”을 자동으로 감지해 업무 카드로 만들어 줍니다.
             </p>
-            {busy && (
-              <span style={{ fontSize: 12, color: "#888" }}>AI 분석 중…</span>
-            )}
+          </div>
+        </div>
+
+        <div className="as-header-right">
+          {busy ? (
+            <span className="as-status-pill busy">AI 분석 중…</span>
+          ) : (
+            <span className="as-status-pill on">자동 감지 ON</span>
+          )}
+        </div>
+      </header>
+
+      {/* 메인 2열 레이아웃 */}
+      <div className="as-main">
+        {/* 왼쪽: 채팅 + 제안 */}
+        <section className="as-chat-card">
+          <div className="as-chat-header">
+            <div className="as-channel-tabs">
+              {channels.map((ch) => (
+                <button
+                  key={ch}
+                  type="button"
+                  className={
+                    "as-channel-tab" + (channel === ch ? " active" : "")
+                  }
+                  onClick={() => setChannel(ch)}
+                >
+                  {ch}
+                </button>
+              ))}
+            </div>
+            <p className="as-chat-hint">
+              “@이름 ~까지 부탁”처럼 말하면 ActionSense가 업무로 만들지
+              제안해요.
+            </p>
           </div>
 
-          <div className="chat-messages">
+          <div className="as-chat-messages">
             {messages.map((m) => (
-              <div key={m.id} className={`message ${m.role}`}>
-                <div className="bubble">
-                  <p>{m.text}</p>
+              <div key={m.id} className={`as-message as-${m.role || "user"}`}>
+                <div className="as-bubble">
+                  <p className="as-message-text">{m.text}</p>
                   {m.suggestion && (
-                    <div className="suggestion">
-                      <div className="summary">
+                    <div className="as-suggestion">
+                      <div className="as-suggestion-summary">
                         <strong>제안:</strong> {m.suggestion.preview}
-                        <span className="conf">
+                        <span className="as-conf">
                           신뢰도 {(m.suggestion.confidence * 100).toFixed(0)}%
                         </span>
                       </div>
-                      <div className="actions">
+                      <div className="as-suggestion-actions">
                         <button
                           className="btn-primary"
                           onClick={() => onAcceptSuggestion(m.suggestion)}
@@ -587,38 +611,49 @@ const ActionSense = () => {
             <div ref={endRef} />
           </div>
 
-          <div className="chat-input">
+          <div className="as-chat-input-row">
             <input
               type="text"
+              className="as-chat-input"
               placeholder="메시지를 입력하세요…  예) @민준 내일까지 배포 준비 부탁 #배포"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
               disabled={busy}
             />
-            <button onClick={handleSend} disabled={busy}>
+            <button
+              className="btn-primary as-send-button"
+              onClick={handleSend}
+              disabled={busy}
+            >
               보내기
             </button>
           </div>
 
-          <div className="samples">
+          <div className="as-sample-row">
             {quickSamples.map((s, i) => (
               <button
                 key={i}
-                className="btn-secondary"
+                className="btn-secondary as-sample-button"
                 onClick={() => setInput(s)}
               >
-                {`샘플${i + 1}`}
+                샘플 {i + 1}
               </button>
             ))}
           </div>
-        </div>
+        </section>
 
-        <div className="task-preview-panel">
-          <h2>생성된 업무 카드</h2>
+        {/* 오른쪽: 생성된 업무 카드 패널 */}
+        <section className="task-preview-panel">
+          <div className="task-panel-header">
+            <h3>생성된 업무 카드</h3>
+            <p>ActionSense가 감지한 업무를 한눈에 모아봅니다.</p>
+          </div>
           <div className="task-list-scroll">
             {tasks.length === 0 ? (
-              <p>아직 생성된 업무가 없습니다.</p>
+              <p className="task-empty">
+                아직 생성된 업무가 없습니다. 채팅에서 부탁/요청을 해보세요.
+              </p>
             ) : (
               tasks.map((t) => (
                 <div key={t.id} className="task-card-preview">
@@ -672,7 +707,7 @@ const ActionSense = () => {
               ))
             )}
           </div>
-        </div>
+        </section>
       </div>
 
       {modalOpen && (

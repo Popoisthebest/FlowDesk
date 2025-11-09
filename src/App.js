@@ -6,9 +6,7 @@ import {
   Route,
   Routes,
   NavLink,
-  Navigate,
 } from "react-router-dom";
-
 import AIMeetingAssistant from "./pages/AIMeetingAssistant";
 import ActionSense from "./pages/ActionSense";
 import TeamAutoMatching from "./pages/TeamAutoMatching";
@@ -16,87 +14,53 @@ import FlowChain from "./pages/FlowChain";
 import AIScheduler from "./pages/AIScheduler";
 import RewardInsight from "./pages/RewardInsight";
 
+const menuItems = [
+  { label: "AI 회의 비서", path: "/ai-meeting-assistant", icon: "📘" },
+  { label: "ActionSense", path: "/actionsense", icon: "⚡" },
+  { label: "FlowChain", path: "/flowchain", icon: "🔗" },
+  { label: "팀 오토 매칭", path: "/team-auto-matching", icon: "👥" },
+  { label: "AI 일정 비서", path: "/ai-scheduler", icon: "📅" },
+  { label: "보너스 리워드 지표", path: "/reward-insight", icon: "📊" },
+];
+
 function App() {
   return (
     <Router>
       <div className="app-container">
-        {/* 왼쪽 사이드바 */}
+        {/* Left Sidebar */}
         <nav className="left-sidebar">
-          <div className="logo">FlowDesk</div>
-          <ul>
-            <li>
-              <NavLink
-                to="/ai-meeting-assistant"
-                className={({ isActive }) => (isActive ? "active" : "")}
-                end
-              >
-                AI 회의 비서
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to="/actionsense"
-                className={({ isActive }) => (isActive ? "active" : "")}
-                end
-              >
-                ActionSense
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to="/flowchain"
-                className={({ isActive }) => (isActive ? "active" : "")}
-                end
-              >
-                FlowChain
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to="/team-auto-matching"
-                className={({ isActive }) => (isActive ? "active" : "")}
-                end
-              >
-                팀 오토 매칭
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to="/ai-scheduler"
-                className={({ isActive }) => (isActive ? "active" : "")}
-                end
-              >
-                AI 일정 비서
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to="/reward-insight"
-                className={({ isActive }) => (isActive ? "active" : "")}
-                end
-              >
-                보너스 리워드 지표
-              </NavLink>
-            </li>
+          <div className="sidebar-header">
+            <div className="sidebar-logo-mark">FD</div>
+            <div className="sidebar-logo-text">FlowDesk</div>
+          </div>
+
+          <ul className="sidebar-menu">
+            {menuItems.map((item) => (
+              <li key={item.path}>
+                <NavLink
+                  to={item.path}
+                  className={({ isActive }) =>
+                    "sidebar-item" + (isActive ? " active" : "")
+                  }
+                >
+                  <span className="sidebar-icon">{item.icon}</span>
+                  <span className="sidebar-label">{item.label}</span>
+                </NavLink>
+              </li>
+            ))}
           </ul>
         </nav>
 
-        {/* 오른쪽 콘텐츠 영역 */}
+        {/* Right Content */}
         <main className="content-area">
           <Routes>
-            {/* 기본 진입 시 AI 회의 비서로 리다이렉트 */}
-            <Route
-              path="/"
-              element={<Navigate to="/ai-meeting-assistant" replace />}
-            />
-
             <Route
               path="/ai-meeting-assistant"
               element={<AIMeetingAssistant />}
             />
             <Route path="/actionsense" element={<ActionSense />} />
-            <Route path="/team-auto-matching" element={<TeamAutoMatching />} />
             <Route path="/flowchain" element={<FlowChain />} />
+            <Route path="/team-auto-matching" element={<TeamAutoMatching />} />
             <Route path="/ai-scheduler" element={<AIScheduler />} />
             <Route path="/reward-insight" element={<RewardInsight />} />
           </Routes>

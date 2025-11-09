@@ -1,217 +1,383 @@
+/* ===============================
+   TEAM AUTO MATCHING (FlowDesk UI)
+   =============================== */
+
 .team-auto-matching-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
   font-family: "Noto Sans KR", sans-serif;
-  background-color: #f0f2f5;
-}
-
-.main-content {
-  display: flex;
-  flex: 1;
-  flex-direction: row; /* 내부 left-nav와 콘텐츠를 수평으로 배치 */
-  overflow: hidden;
-}
-
-.team-matching-panel {
-  flex: 3;
-  padding: 20px;
+  background: radial-gradient(
+    circle at top left,
+    #eef2ff 0,
+    #f9fafb 40%,
+    #fdf2ff 100%
+  );
+  padding: 24px 32px 32px;
+  box-sizing: border-box;
   overflow-y: auto;
 }
 
-.panel-header {
-  margin-bottom: 20px;
-}
-
-.panel-header h1 {
-  font-size: 28px;
-  color: #333;
-  margin-bottom: 5px;
-}
-
-.panel-header p {
-  color: #666;
-  font-size: 14px;
-}
-
-.filters {
+.team-matching-main {
   display: flex;
-  margin-bottom: 30px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 20px;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.filter-group {
-  margin-right: 30px;
+/* ===== HEADER ===== */
+
+.tma-header {
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.filter-group label {
-  display: block;
-  font-weight: bold;
-  margin-bottom: 10px;
-  color: #333;
+.tma-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.tags-container {
+.tma-logo-puck {
+  width: 44px;
+  height: 44px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #3b82f6, #14b8a6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.4);
+  font-size: 22px;
+  color: #fff;
+}
+
+.tma-title {
+  margin: 0;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.tma-subtitle {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.tma-run-button {
+  padding-inline: 18px;
+}
+
+/* ===== GRID ===== */
+
+.tma-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.7fr);
+  gap: 18px;
+  /* height: calc(100vh - 160px); */
+}
+
+/* ===== FILTERS (LEFT) ===== */
+
+.tma-filters-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 16px 18px 14px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  overflow-y: auto;
+}
+
+.tma-section-title {
+  font-size: 16px;
+  margin: 0 0 4px;
+  color: #0f172a;
+}
+
+.tma-section-desc {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.tma-filter-group {
+  margin-bottom: 14px;
+}
+
+.tma-filter-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.tma-filter-label-row span {
+  font-weight: 600;
+  font-size: 13px;
+  color: #374151;
+}
+
+.tma-filter-reset {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.tma-tags-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
-.tag {
-  padding: 8px 15px;
-  border-radius: 20px;
-  font-size: 14px;
+.tma-chip {
+  border: 1px solid #cbd5e1;
+  background-color: #f8fafc;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 13px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.15s ease;
 }
 
-.role-tag {
-  background-color: #e6f7ff;
-  color: #1890ff;
-  border: 1px solid #91d5ff;
+.tma-chip.selected {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.3);
 }
 
-.time-tag {
-  background-color: #fffbe6;
-  color: #faad14;
-  border: 1px solid #ffe58f;
+.tma-filter-summary {
+  border-top: 1px dashed rgba(148, 163, 184, 0.4);
+  padding-top: 10px;
+  margin-top: 12px;
+  font-size: 13px;
 }
 
-.preference-tag {
-  background-color: #f9f0ff;
-  color: #722ed1;
-  border: 1px solid #d3adf7;
+.tma-filter-pill {
+  display: inline-block;
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  margin-right: 6px;
 }
 
-.tag:hover {
-  opacity: 0.8;
-}
+/* ===== RESULTS (RIGHT) ===== */
 
-.matching-results {
+.tma-results {
   display: flex;
-  gap: 30px;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
 }
 
-.candidate-members,
-.recommended-team {
+/* 후보 리스트(60%) / 추천 팀(40%) 비율로 분할 */
+.tma-candidate-card {
+  flex: 0.6;
+  display: flex;
+  flex-direction: column;
+}
+
+.tma-recommend-card {
+  flex: 0.4;
+  display: flex;
+  flex-direction: column;
+}
+
+.tma-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 14px 16px 12px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.tma-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.tma-card-header h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.tma-card-desc {
+  font-size: 12.5px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.tma-count-badge {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.tma-score-badge {
+  background-color: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* ===== 스크롤 영역 ===== */
+
+.tma-card-scroll {
   flex: 1;
-  background-color: #ffffff;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow-y: auto;
+  padding-right: 4px;
+  min-height: 0;
 }
 
-.candidate-members h2,
-.recommended-team h2 {
-  font-size: 20px;
-  color: #333;
-  margin-bottom: 5px;
-}
-
-.candidate-members > p,
-.recommended-team > p {
-  color: #666;
-  font-size: 14px;
-  margin-bottom: 20px;
-}
+/* 후보 멤버 카드 */
 
 .member-card {
-  border: 1px solid #eee;
-  padding: 15px;
-  border-radius: 8px;
-  margin-bottom: 15px;
-  background-color: #fdfdfd;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
 }
 
 .member-info {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
 }
 
 .member-name {
-  font-size: 18px;
-  font-weight: bold;
-  color: #333;
-  margin-right: 10px;
+  font-weight: 600;
+  color: #111827;
+  font-size: 14px;
 }
 
-.member-role {
-  background-color: #e6f7ff;
-  color: #1890ff;
-  padding: 3px 8px;
-  border-radius: 12px;
+.member-role-chip {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  border-radius: 999px;
+  padding: 2px 8px;
   font-size: 12px;
 }
 
-.availability,
-.member-tags,
+.member-tags {
+  font-size: 12px;
+  color: #475569;
+  margin: 3px 0 0;
+}
+
+.availability {
+  font-size: 12px;
+  color: #64748b;
+  margin: 3px 0 0;
+}
+
 .affinity {
-  font-size: 14px;
-  color: #555;
-  margin-bottom: 5px;
+  font-size: 12px;
+  color: #334155;
+  margin: 3px 0 0;
 }
 
 .affinity span {
   font-weight: bold;
-  color: #1890ff;
+  color: #16a34a;
 }
 
-.recommended-team .affinity-score {
-  display: block;
-  text-align: right;
-  font-size: 16px;
-  font-weight: bold;
-  color: #52c41a;
-  margin-bottom: 10px;
-}
+/* 추천 팀 카드 */
 
 .team-member-card {
   display: flex;
-  align-items: center;
-  border: 1px solid #eee;
-  padding: 15px;
-  border-radius: 8px;
-  margin-bottom: 15px;
-  background-color: #fdfdfd;
+  align-items: flex-start;
+  background-color: #f9fafb;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
 }
 
 .member-initial {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: #bae7ff;
-  color: #1890ff;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background-color: #dbeafe;
+  color: #1e3a8a;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 18px;
-  font-weight: bold;
-  margin-right: 15px;
+  font-weight: 700;
+  font-size: 14px;
+  margin-right: 10px;
 }
 
-.member-details p {
-  margin: 0;
-  font-size: 14px;
-  color: #555;
+.member-details {
+  flex: 1;
 }
 
 .member-details .name {
-  font-weight: bold;
-  color: #333;
+  margin: 0;
+  font-size: 14px;
+  color: #0f172a;
+  font-weight: 600;
 }
 
 .member-details .role {
-  background-color: #f0f2f5;
-  padding: 2px 7px;
-  border-radius: 10px;
-  font-size: 12px;
-  display: inline-block;
-  margin-left: 5px;
+  margin-left: 6px;
+  color: #475569;
+  font-size: 13px;
 }
 
-.member-details .tags span {
-  color: #722ed1;
-  font-weight: 500;
+.member-details .tags {
+  font-size: 12px;
+  color: #4b5563;
+  margin: 2px 0 0;
+}
+
+.member-details .availability {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 1px 0;
+}
+
+.member-details .affinity {
+  font-size: 12px;
+  color: #334155;
+  margin: 2px 0 0;
+}
+
+.member-details .affinity span {
+  font-weight: bold;
+  color: #16a34a;
+}
+
+/* 빈 상태 텍스트 */
+.tma-empty {
+  font-size: 13px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 10px 0;
+}
+
+/* 스크롤바 */
+.tma-card-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.tma-card-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.7);
+  border-radius: 999px;
 }
