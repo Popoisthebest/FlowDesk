@@ -424,8 +424,14 @@ const RewardInsight = () => {
               </p>
             </div>
 
-            {/* 채팅 메시지 리스트 */}
-            <div className="as-chat-messages">
+            {/* 채팅 메시지 리스트 - 스크롤 가능 영역 */}
+            <div
+              className="as-chat-messages"
+              style={{
+                maxHeight: "360px",
+                overflowY: "auto",
+              }}
+            >
               {visibleMessages.map((m) => {
                 const isMine = m.role === "user" && m.authorName === userName;
                 const msgClass =

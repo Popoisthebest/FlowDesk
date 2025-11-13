@@ -1,6 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./AIScheduler.css";
 import { extractEventDetails } from "../utils/openaiApi";
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import { db } from "../firebase";
 
 /* ====== 날짜 유틸 ====== */
 // 로컬 기준으로 YYYY-MM-DD 문자열 생성
@@ -128,7 +139,7 @@ function normalizeDateKorean(str, now = new Date()) {
     return toYMD(lastDayOfMonth(today));
   }
 
-  // "이번주/다음주/다다음주/다다다음주 + 요일" 처리 (버그 원인 부분 완전 교체)
+  // "이번주/다음주/다다음주/다다다음주 + 요일" 처리
   const wk = text.match(
     /((?:이번|다음|내|차|다다음|다다다음)\s*주)\s*(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)/
   );
@@ -144,7 +155,6 @@ function normalizeDateKorean(str, now = new Date()) {
 
     const idx = parseWeekdayIndexMon0(weekdayWord);
     if (idx != null) {
-      // 이번주 월요일 기준으로 주 오프셋을 더한 뒤 요일 인덱스만큼 이동
       const thisMon = getMondayOfWeek(today);
       const weekStart = new Date(thisMon);
       weekStart.setDate(weekStart.getDate() + 7 * weekOffset);
@@ -152,7 +162,6 @@ function normalizeDateKorean(str, now = new Date()) {
       const target = new Date(weekStart);
       target.setDate(weekStart.getDate() + idx);
 
-      // "이번주 화요일"인데 이미 지났다면 다음주로 미는 옵션 (필요시 조정)
       if (weekOffset === 0 && target < today) {
         target.setDate(target.getDate() + 7);
       }
@@ -169,11 +178,9 @@ function normalizeDateKorean(str, now = new Date()) {
     const idx = parseWeekdayIndexMon0(wd[1]);
     if (idx != null) {
       const thisMon = getMondayOfWeek(today);
-      // 이번주 기준으로 idx 요일 찾기
       let target = new Date(thisMon);
       target.setDate(thisMon.getDate() + idx);
 
-      // 이미 지났으면 다음주 같은 요일
       if (target <= today) {
         target.setDate(target.getDate() + 7);
       }
@@ -301,6 +308,40 @@ const AIScheduler = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
 
+  // dashboard / calendar 두 가지 모드
+  const [viewMode, setViewMode] = useState("dashboard");
+
+  // Firestore에 저장된 일정 목록
+  const [events, setEvents] = useState([]);
+
+  // 전체 캘린더에서 클릭한 일정의 상세 정보
+  const [selectedEvent, setSelectedEvent] = useState(null);
+
+  // Firestore: 일정 구독
+  useEffect(() => {
+    const colRef = collection(db, "aiSchedulerEvents");
+    const q = query(colRef, orderBy("createdAt", "desc"));
+
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          title: data.title || "제목 없음",
+          date: data.date, // "YYYY-MM-DD"
+          startTime: data.startTime || "",
+          endTime: data.endTime || "",
+          location: data.location || "",
+          participants: data.participants || [],
+          createdAt: data.createdAt,
+        };
+      });
+      setEvents(list);
+    });
+
+    return () => unsub();
+  }, []);
+
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const firstDayOfMonth = (y, m) => new Date(y, m, 1).getDay();
 
@@ -339,6 +380,69 @@ const AIScheduler = () => {
     return days;
   };
 
+  // 전체 일정 관리용 월간 캘린더 그리드
+  const renderFullCalendarGrid = () => {
+    const y = date.getFullYear();
+    const m = date.getMonth();
+    const numDays = daysInMonth(y, m);
+    const startDay = firstDayOfMonth(y, m);
+    const cells = [];
+
+    for (let i = 0; i < startDay; i++) {
+      cells.push(
+        <div key={`full-empty-${i}`} className="calendar-full-day empty"></div>
+      );
+    }
+
+    for (let d = 1; d <= numDays; d++) {
+      const dateStr = `${y}-${pad2(m + 1)}-${pad2(d)}`;
+      const dayEvents = events.filter((ev) => ev.date === dateStr);
+
+      const now = new Date();
+      const isToday =
+        y === now.getFullYear() && m === now.getMonth() && d === now.getDate();
+
+      cells.push(
+        <div
+          key={dateStr}
+          className={`calendar-full-day ${isToday ? "today" : ""}`}
+        >
+          <div className="calendar-full-day-header">
+            <span className="day-number">{d}</span>
+          </div>
+          <div className="calendar-full-events">
+            {dayEvents.map((ev) => (
+              <div
+                key={ev.id}
+                className="calendar-event-pill"
+                onClick={() => setSelectedEvent(ev)}
+              >
+                <span className="event-time">
+                  {ev.startTime ? ev.startTime : ""}
+                </span>
+                <span className="event-title">{ev.title}</span>
+                <button
+                  className="event-delete-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteEvent(ev.id);
+                    if (selectedEvent && selectedEvent.id === ev.id) {
+                      setSelectedEvent(null);
+                    }
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return cells;
+  };
+
   const goToPreviousMonth = () =>
     setDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   const goToNextMonth = () =>
@@ -358,17 +462,33 @@ const AIScheduler = () => {
   const removeParticipant = (name) =>
     setParticipants(participants.filter((p) => p !== name));
 
-  const handleRegisterSchedule = () => {
-    const event = {
-      title,
-      date: date.toISOString(),
-      startTime,
-      endTime,
-      location,
-      participants,
-    };
-    console.log("등록된 일정:", event);
-    alert("일정이 등록되었습니다. (현재는 로컬에서만 저장됩니다)");
+  // 일정 등록 → Firestore 저장
+  const handleRegisterSchedule = async () => {
+    try {
+      const event = {
+        title,
+        date: formatDateForInput(date), // "YYYY-MM-DD"
+        startTime,
+        endTime,
+        location,
+        participants,
+        createdAt: serverTimestamp(),
+      };
+      await addDoc(collection(db, "aiSchedulerEvents"), event);
+      setAiMessage("일정이 등록되었습니다.");
+    } catch (e) {
+      console.error("일정 등록 중 오류:", e);
+      setAiMessage("일정 등록 중 오류가 발생했습니다.");
+    }
+  };
+
+  // 일정 삭제
+  const handleDeleteEvent = async (id) => {
+    try {
+      await deleteDoc(doc(db, "aiSchedulerEvents", id));
+    } catch (e) {
+      console.error("일정 삭제 중 오류:", e);
+    }
   };
 
   /* 자연어 → 일정 자동 인식 */
@@ -411,7 +531,6 @@ const AIScheduler = () => {
       ) {
         offsetDays = result.offsetDays;
       } else if (result && typeof result.relative === "string") {
-        // 예: "7일 후" 같은 문자열을 내려주게 했다면 여기서 파싱
         const m = result.relative.match(/(\d+)\s*일\s*후/);
         if (m) offsetDays = parseInt(m[1], 10);
       }
@@ -471,16 +590,26 @@ const AIScheduler = () => {
     handleAutoDetectFromNatural();
   };
 
+  // 선택된 날짜의 일정만 필터링 (대시보드 오른쪽 사이드 카드에서 사용)
+  const selectedYMD = formatDateForInput(date);
+  const eventsForSelectedDate = events.filter((ev) => ev.date === selectedYMD);
+
   return (
     <div className="ai-scheduler-container">
-      <div className="scheduler-main">
+      <div
+        className={`scheduler-main ${
+          viewMode === "calendar" ? "full-calendar-mode" : ""
+        }`}
+      >
         <header className="scheduler-header">
           <div className="scheduler-header-left">
             <div className="scheduler-logo-puck">📅</div>
             <div>
               <h2 className="scheduler-title">AI 일정 비서</h2>
               <p className="scheduler-subtitle">
-                자연어로 입력하면 자동으로 일정을 인식하고 캘린더에 등록합니다.
+                {viewMode === "dashboard"
+                  ? "자연어로 입력하면 자동으로 일정을 인식하고 캘린더에 등록합니다."
+                  : "등록된 일정을 한눈에 보는 전체 캘린더입니다."}
               </p>
             </div>
           </div>
@@ -493,153 +622,301 @@ const AIScheduler = () => {
           </button>
         </header>
 
-        <div className="scheduler-grid">
-          <section className="scheduler-left">
-            <div className="schedule-card">
-              <h3>새 일정 등록</h3>
-              <div className="form-group">
-                <label>제목</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="일정 제목 입력"
-                />
-              </div>
-
-              <div className="form-group-inline">
+        {viewMode === "dashboard" ? (
+          <div className="scheduler-grid">
+            <section className="scheduler-left">
+              <div className="schedule-card">
+                <h3>새 일정 등록</h3>
                 <div className="form-group">
-                  <label>시작</label>
+                  <label>제목</label>
                   <input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="일정 제목 입력"
                   />
                 </div>
-                <div className="form-group">
-                  <label>종료</label>
-                  <input
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                  />
-                </div>
-              </div>
 
-              <div className="form-group">
-                <label>날짜</label>
-                <input
-                  type="date"
-                  value={formatDateForInput(date)}
-                  onChange={(e) => setDate(new Date(e.target.value))}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>장소</label>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>참석자</label>
-                <div className="participants-input">
-                  {participants.map((p) => (
-                    <span key={p} className="participant-tag">
-                      {p}
-                      <button onClick={() => removeParticipant(p)}>×</button>
-                    </span>
-                  ))}
-                  <form onSubmit={addParticipant}>
+                <div className="form-group-inline">
+                  <div className="form-group">
+                    <label>시작</label>
                     <input
-                      type="text"
-                      value={newParticipant}
-                      onChange={(e) => setNewParticipant(e.target.value)}
-                      placeholder="+ 추가"
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
                     />
-                  </form>
+                  </div>
+                  <div className="form-group">
+                    <label>종료</label>
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>날짜</label>
+                  <input
+                    type="date"
+                    value={formatDateForInput(date)}
+                    onChange={(e) => setDate(new Date(e.target.value))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>장소</label>
+                  <input
+                    type="text"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>참석자</label>
+                  <div className="participants-input">
+                    {participants.map((p) => (
+                      <span key={p} className="participant-tag">
+                        {p}
+                        <button onClick={() => removeParticipant(p)}>×</button>
+                      </span>
+                    ))}
+                    <form onSubmit={addParticipant}>
+                      <input
+                        type="text"
+                        value={newParticipant}
+                        onChange={(e) => setNewParticipant(e.target.value)}
+                        placeholder="+ 추가"
+                      />
+                    </form>
+                  </div>
+                </div>
+
+                <div className="form-actions">
+                  <button className="btn-secondary">임시 저장</button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleRegisterSchedule}
+                  >
+                    일정 등록
+                  </button>
+                </div>
+
+                {aiMessage && (
+                  <p
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      color: "#166534",
+                    }}
+                  >
+                    {aiMessage}
+                  </p>
+                )}
+              </div>
+
+              <div className="natural-language-card">
+                <h4>자연어 입력</h4>
+                <p>예: 다음주 화요일 오전 9시에 회의실 A에서 디자인 리뷰</p>
+                <div className="natural-input">
+                  <input
+                    type="text"
+                    placeholder="자연어로 일정 입력..."
+                    style={{ width: "100%" }}
+                    value={naturalInput}
+                    onChange={(e) => setNaturalInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAutoDetectFromNatural();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="scheduler-right">
+              <div className="calendar-card">
+                <div className="calendar-header">
+                  <button className="btn-secondary" onClick={goToPreviousMonth}>
+                    {"<"}
+                  </button>
+                  <h3>
+                    {date.getFullYear()}년 {date.getMonth() + 1}월
+                  </h3>
+                  <button className="btn-secondary" onClick={goToNextMonth}>
+                    {">"}
+                  </button>
+                </div>
+
+                <div className="calendar-grid">
+                  {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
+                    <div key={d} className="calendar-weekday">
+                      {d}
+                    </div>
+                  ))}
+                  {renderCalendarDays()}
                 </div>
               </div>
 
-              <div className="form-actions">
-                <button className="btn-secondary">임시 저장</button>
-                <button
-                  className="btn-primary"
-                  onClick={handleRegisterSchedule}
-                >
-                  일정 등록
+              <div className="schedule-list-card">
+                <h3>{selectedYMD} 일정</h3>
+                {eventsForSelectedDate.length === 0 ? (
+                  <p className="schedule-empty">등록된 일정이 없습니다.</p>
+                ) : (
+                  <ul className="schedule-list">
+                    {eventsForSelectedDate.map((ev) => (
+                      <li key={ev.id} className="schedule-item">
+                        <div className="schedule-item-main">
+                          <div className="schedule-item-time">
+                            {ev.startTime} ~ {ev.endTime}
+                          </div>
+                          <div className="schedule-item-title">{ev.title}</div>
+                          {ev.location && (
+                            <div className="schedule-item-location">
+                              장소: {ev.location}
+                            </div>
+                          )}
+                          {ev.participants?.length > 0 && (
+                            <div className="schedule-item-participants">
+                              참석: {ev.participants.join(", ")}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          className="btn-secondary schedule-delete-btn"
+                          onClick={() => handleDeleteEvent(ev.id)}
+                        >
+                          삭제
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="quick-actions">
+                <h3>빠른 액션</h3>
+                <button className="btn-primary">
+                  Google 캘린더로 내보내기
                 </button>
+                <button className="btn-secondary">팀원들과 공유</button>
+                <button
+                  className="btn-secondary"
+                  onClick={() => setViewMode("calendar")}
+                >
+                  일정 관리 보기
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : (
+          <section className="calendar-management-page">
+            <div className="calendar-management-header">
+              <button
+                className="btn-secondary back-to-dashboard-btn"
+                onClick={() => setViewMode("dashboard")}
+              >
+                ← 일정 등록 화면으로 돌아가기
+              </button>
+              <div className="calendar-management-title">
+                <h3>
+                  {date.getFullYear()}년 {date.getMonth() + 1}월 전체 일정
+                </h3>
+                <div className="calendar-management-nav">
+                  <button className="btn-tertiary" onClick={goToPreviousMonth}>
+                    이전 달
+                  </button>
+                  <button className="btn-tertiary" onClick={goToNextMonth}>
+                    다음 달
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="natural-language-card">
-              <h4>자연어 입력</h4>
-              <p>예: “다음주 화요일 오전 9시에 회의실 A에서 디자인 리뷰”</p>
-              <div className="natural-input">
-                <input
-                  type="text"
-                  placeholder="자연어로 일정 입력..."
-                  style={{ width: "100%" }}
-                  value={naturalInput}
-                  onChange={(e) => setNaturalInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAutoDetectFromNatural();
-                    }
-                  }}
-                />
-              </div>
-              {aiMessage && (
-                <p
-                  style={{
-                    marginTop: 6,
-                    fontSize: 12,
-                    color: "#166534",
-                  }}
-                >
-                  {aiMessage}
+            <div className="calendar-full-grid">
+              {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
+                <div key={d} className="calendar-weekday full">
+                  {d}
+                </div>
+              ))}
+              {renderFullCalendarGrid()}
+            </div>
+          </section>
+        )}
+      </div>
+
+      {selectedEvent && (
+        <div
+          className="event-detail-modal-backdrop"
+          onClick={() => setSelectedEvent(null)}
+        >
+          <div
+            className="event-detail-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="event-detail-header">
+              <h3>{selectedEvent.title}</h3>
+              <button
+                className="event-detail-close"
+                onClick={() => setSelectedEvent(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="event-detail-body">
+              <p className="event-detail-row">
+                <span className="event-detail-label">날짜</span>
+                <span className="event-detail-value">{selectedEvent.date}</span>
+              </p>
+              <p className="event-detail-row">
+                <span className="event-detail-label">시간</span>
+                <span className="event-detail-value">
+                  {selectedEvent.startTime || "시간 미정"}
+                  {selectedEvent.endTime ? ` ~ ${selectedEvent.endTime}` : ""}
+                </span>
+              </p>
+              {selectedEvent.location && (
+                <p className="event-detail-row">
+                  <span className="event-detail-label">장소</span>
+                  <span className="event-detail-value">
+                    {selectedEvent.location}
+                  </span>
                 </p>
               )}
+              {selectedEvent.participants &&
+                selectedEvent.participants.length > 0 && (
+                  <p className="event-detail-row">
+                    <span className="event-detail-label">참석자</span>
+                    <span className="event-detail-value">
+                      {selectedEvent.participants.join(", ")}
+                    </span>
+                  </p>
+                )}
             </div>
-          </section>
-
-          <section className="scheduler-right">
-            <div className="calendar-card">
-              <div className="calendar-header">
-                <button className="btn-secondary" onClick={goToPreviousMonth}>
-                  &lt;
-                </button>
-                <h3>
-                  {date.getFullYear()}년 {date.getMonth() + 1}월
-                </h3>
-                <button className="btn-secondary" onClick={goToNextMonth}>
-                  &gt;
-                </button>
-              </div>
-
-              <div className="calendar-grid">
-                {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
-                  <div key={d} className="calendar-weekday">
-                    {d}
-                  </div>
-                ))}
-                {renderCalendarDays()}
-              </div>
+            <div className="event-detail-footer">
+              <button
+                className="btn-danger"
+                onClick={async () => {
+                  await handleDeleteEvent(selectedEvent.id);
+                  setSelectedEvent(null);
+                }}
+              >
+                일정 삭제
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => setSelectedEvent(null)}
+              >
+                닫기
+              </button>
             </div>
-
-            <div className="quick-actions">
-              <h3>빠른 액션</h3>
-              <button className="btn-primary">Google 캘린더로 내보내기</button>
-              <button className="btn-secondary">팀원들과 공유</button>
-              <button className="btn-secondary">일정 관리 보기</button>
-            </div>
-          </section>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
