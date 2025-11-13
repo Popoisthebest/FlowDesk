@@ -535,10 +535,27 @@
   border-bottom-right-radius: 4px;
 }
 
+/* 내 채팅 (오른쪽 정렬, 파란 말풍선) */
+.my-message {
+  justify-content: flex-end;
+}
+
+.my-message .as-bubble {
+  background-color: #2563eb;
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+/* 내 채팅의 텍스트는 항상 하얀색 */
+.my-message .as-message-text {
+  color: #ffffff;
+}
+
+/* 내 이름 pill: 흰 배경 + 파란 글자 */
 .my-message .as-author-pill {
-  background: #2563eb;
-  color: white;
-  font-weight: 500;
+  background: #ffffff;
+  color: #2563eb;
+  font-weight: 600;
 }
 
 /* 메시지 텍스트 */

@@ -8,6 +8,16 @@ import {
   diarizeTranscript,
 } from "../utils/openaiApi";
 
+// Firestore 관련 import (경로/이름은 프로젝트에 맞게 조정)
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+} from "firebase/firestore";
+import { db } from "../firebase"; // db 객체를 export 하고 있다고 가정
+
 const speakerColorMap = {
   발화자1: "#2563eb",
   발화자2: "#16a34a",
@@ -33,19 +43,31 @@ const AIMeetingAssistant = () => {
 
   const recognitionRef = useRef(null);
 
-  // ----- 초기 로드 시 localStorage에서 회의 기록 불러오기 -----
+  // ----- 초기 로드 시 Firestore에서 회의 기록 불러오기 -----
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("meetingRecords");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          setMeetingRecords(parsed);
-        }
+    const fetchMeetingRecords = async () => {
+      try {
+        const q = query(
+          collection(db, "meetingRecords"),
+          orderBy("createdAt", "desc")
+        );
+        const snapshot = await getDocs(q);
+
+        const records = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+          };
+        });
+
+        setMeetingRecords(records);
+      } catch (e) {
+        console.error("Firestore에서 meetingRecords 불러오기 실패:", e);
       }
-    } catch (e) {
-      console.warn("meetingRecords 불러오기 실패:", e);
-    }
+    };
+
+    fetchMeetingRecords();
   }, []);
 
   // 녹음 타이머
@@ -199,11 +221,10 @@ const AIMeetingAssistant = () => {
               setActionItems([]);
             }
 
-            // 5) 회의 기록 저장 (localStorage + state)
+            // 5) 회의 기록 Firestore에 저장
             try {
               const record = {
-                id: `meeting-${Date.now()}`,
-                createdAt: Date.now(),
+                createdAt: Date.now(), // 정렬용 숫자 타임스탬프
                 date: new Date().toLocaleString(),
                 transcript,
                 utterances,
@@ -211,16 +232,16 @@ const AIMeetingAssistant = () => {
                 actionItems: actionList,
               };
 
-              const existing =
-                JSON.parse(localStorage.getItem("meetingRecords") || "[]") ||
-                [];
+              const colRef = collection(db, "meetingRecords");
+              const docRef = await addDoc(colRef, record);
 
-              const updated = [...existing, record];
-
-              localStorage.setItem("meetingRecords", JSON.stringify(updated));
-              setMeetingRecords(updated);
+              // Firestore에 저장된 id를 포함해 로컬 상태 업데이트
+              setMeetingRecords((prev) => [
+                ...prev,
+                { ...record, id: docRef.id },
+              ]);
             } catch (e) {
-              console.warn("localStorage save error:", e);
+              console.warn("Firestore save error:", e);
             }
           } else {
             setDialogue([
@@ -267,8 +288,7 @@ const AIMeetingAssistant = () => {
     }
   };
 
-  // ----- 최근 회의 기록 불러오기 -----
-
+  // ----- 최근 회의 기록 모달 제어 -----
   const handleOpenHistory = () => {
     setShowHistory(true);
   };
@@ -295,7 +315,7 @@ const AIMeetingAssistant = () => {
       setDialogue([]);
     }
 
-    // ✅ 핵심 요약 불러오기
+    // 요약 불러오기
     if (record.summary && record.summary.trim().length > 0) {
       setSummary(record.summary);
     } else if (record.summaryText && record.summaryText.trim().length > 0) {
@@ -305,7 +325,7 @@ const AIMeetingAssistant = () => {
       setSummary("");
     }
 
-    // ✅ 액션 아이템 불러오기
+    // 액션 아이템 불러오기
     if (Array.isArray(record.actionItems)) {
       setActionItems(record.actionItems);
     } else if (Array.isArray(record.actionItemResult)) {
@@ -315,7 +335,6 @@ const AIMeetingAssistant = () => {
       setActionItems([]);
     }
 
-    // 모달 닫기
     setShowHistory(false);
   };
 
@@ -325,7 +344,6 @@ const AIMeetingAssistant = () => {
   }, [meetingRecords]);
 
   // ----- 통계 -----
-
   const participantCount = React.useMemo(() => {
     const set = new Set();
     dialogue.forEach((u) => {
@@ -428,7 +446,6 @@ const AIMeetingAssistant = () => {
                 : "회의가 시작되면 버튼을 눌러 녹음을 시작하세요."}
             </p>
 
-            {/* 단순 애니메이션 파형 (실제 오디오 분석 아님, UI용) */}
             {isRecording && (
               <div className="fake-wave-row">
                 {Array.from({ length: 20 }).map((_, idx) => (

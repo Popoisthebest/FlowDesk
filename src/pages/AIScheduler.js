@@ -1,14 +1,305 @@
 import React, { useState } from "react";
 import "./AIScheduler.css";
+import { extractEventDetails } from "../utils/openaiApi";
 
+/* ====== 날짜 유틸 ====== */
+// 로컬 기준으로 YYYY-MM-DD 문자열 생성
+function formatDateForInput(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function pad2(n) {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+function toYMD(d) {
+  const y = d.getFullYear();
+  return `${y}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+function startOfDay(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function endOfWeek(d) {
+  const x = new Date(d);
+  const day = x.getDay(); // 0=일 ... 6=토
+  const diff = 6 - day; // 토요일을 주말 끝으로 봄
+  x.setDate(x.getDate() + diff);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function lastDayOfMonth(date) {
+  const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// 월=0, 화=1, ... 일=6 (월요일 기준 인덱스)
+function parseWeekdayIndexMon0(token) {
+  const map = {
+    월: 0,
+    월요일: 0,
+    화: 1,
+    화요일: 1,
+    수: 2,
+    수요일: 2,
+    목: 3,
+    목요일: 3,
+    금: 4,
+    금요일: 4,
+    토: 5,
+    토요일: 5,
+    일: 6,
+    일요일: 6,
+  };
+  return map[token] ?? null;
+}
+
+// 기준 날짜가 속한 "이번주 월요일" 구하기 (월요일을 주 시작으로)
+function getMondayOfWeek(date) {
+  const d = startOfDay(date);
+  const dow = d.getDay(); // 0=일
+  const diffFromMon = (dow + 6) % 7; // 월(1) -> 0, 화(2)->1, ..., 일(0)->6
+  d.setDate(d.getDate() - diffFromMon);
+  return d;
+}
+
+function ensureFutureDate(
+  base,
+  date,
+  { allowToday = true, pastMeansNextYear = true } = {}
+) {
+  const b = startOfDay(base);
+  const t = startOfDay(date);
+  if (t < b) {
+    if (pastMeansNextYear) {
+      const ny = new Date(t);
+      ny.setFullYear(b.getFullYear() + 1);
+      return ny;
+    }
+  }
+  if (!allowToday && toYMD(t) === toYMD(b)) {
+    const plusOne = new Date(t);
+    plusOne.setDate(plusOne.getDate() + 1);
+    return plusOne;
+  }
+  return t;
+}
+
+/* ====== 한국어 날짜 파서 (주/요일 로직 개선 버전) ====== */
+function normalizeDateKorean(str, now = new Date()) {
+  if (!str) return null;
+  const text = str.trim();
+  const today = startOfDay(now);
+
+  const hasPastMarker = /(지난|지난주|지난달|작년|전년)/.test(text);
+
+  // 오늘/내일/모레/글피
+  if (/오늘|EOD|오늘\s*마감|오늘\s*까지/i.test(text)) {
+    return toYMD(today);
+  }
+  if (/내일/.test(text)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return toYMD(d);
+  }
+  if (/모레/.test(text)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 2);
+    return toYMD(d);
+  }
+  if (/글피/.test(text)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 3);
+    return toYMD(d);
+  }
+
+  // 이번 주말 / 주말까지
+  if (/이번\s*주\s*말|EOW|주말\s*까지/i.test(text)) {
+    const eow = endOfWeek(today);
+    return toYMD(eow);
+  }
+
+  // 월말/말일
+  if (/월말|말일/.test(text)) {
+    return toYMD(lastDayOfMonth(today));
+  }
+
+  // "이번주/다음주/다다음주/다다다음주 + 요일" 처리 (버그 원인 부분 완전 교체)
+  const wk = text.match(
+    /((?:이번|다음|내|차|다다음|다다다음)\s*주)\s*(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)/
+  );
+  if (wk) {
+    const weekWord = wk[1];
+    const weekdayWord = wk[2];
+
+    let weekOffset = 0;
+    if (/다다다음/.test(weekWord)) weekOffset = 3;
+    else if (/다다음/.test(weekWord)) weekOffset = 2;
+    else if (/다음|내|차/.test(weekWord)) weekOffset = 1;
+    else weekOffset = 0; // 이번주
+
+    const idx = parseWeekdayIndexMon0(weekdayWord);
+    if (idx != null) {
+      // 이번주 월요일 기준으로 주 오프셋을 더한 뒤 요일 인덱스만큼 이동
+      const thisMon = getMondayOfWeek(today);
+      const weekStart = new Date(thisMon);
+      weekStart.setDate(weekStart.getDate() + 7 * weekOffset);
+
+      const target = new Date(weekStart);
+      target.setDate(weekStart.getDate() + idx);
+
+      // "이번주 화요일"인데 이미 지났다면 다음주로 미는 옵션 (필요시 조정)
+      if (weekOffset === 0 && target < today) {
+        target.setDate(target.getDate() + 7);
+      }
+
+      return toYMD(target);
+    }
+  }
+
+  // 단독 요일: "화요일에 회의" → 가장 가까운 미래의 해당 요일
+  const wd = text.match(
+    /(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)/
+  );
+  if (wd) {
+    const idx = parseWeekdayIndexMon0(wd[1]);
+    if (idx != null) {
+      const thisMon = getMondayOfWeek(today);
+      // 이번주 기준으로 idx 요일 찾기
+      let target = new Date(thisMon);
+      target.setDate(thisMon.getDate() + idx);
+
+      // 이미 지났으면 다음주 같은 요일
+      if (target <= today) {
+        target.setDate(target.getDate() + 7);
+      }
+      return toYMD(target);
+    }
+  }
+
+  // 2025-11-13 / 2025.11.13 형태
+  let m = text.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+  if (m) {
+    const y = +m[1],
+      mo = +m[2] - 1,
+      da = +m[3];
+    const dt = new Date(y, mo, da);
+    if (!isNaN(dt)) {
+      const candidate = ensureFutureDate(today, dt, {
+        allowToday: true,
+        pastMeansNextYear: !hasPastMarker && y === today.getFullYear(),
+      });
+      return toYMD(candidate);
+    }
+  }
+
+  // 11-13 / 11.13 형태 (올해 기준)
+  m = text.match(/\b(\d{1,2})[.\-\/](\d{1,2})\b/);
+  if (m) {
+    const y = today.getFullYear();
+    const mo = +m[1] - 1,
+      da = +m[2];
+    let dt = new Date(y, mo, da);
+    if (!isNaN(dt)) {
+      dt = ensureFutureDate(today, dt, {
+        allowToday: true,
+        pastMeansNextYear: !hasPastMarker,
+      });
+      return toYMD(dt);
+    }
+  }
+
+  // (이번/다음달) 11월 13일
+  m = text.match(
+    /(?:(이번\s*달|다음\s*달)\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일/
+  );
+  if (m) {
+    const mod = m[1];
+    const M = +m[2];
+    const D = +m[3];
+    const base = new Date(today);
+    if (/다음\s*달/.test(mod || "")) {
+      base.setMonth(base.getMonth() + 1);
+    }
+    const y = base.getFullYear();
+    const mo = /다음\s*달/.test(mod || "") ? base.getMonth() : M - 1;
+    let dt = new Date(y, mo, D);
+    if (!isNaN(dt)) {
+      dt = ensureFutureDate(today, dt, {
+        allowToday: true,
+        pastMeansNextYear: !hasPastMarker,
+      });
+      return toYMD(dt);
+    }
+  }
+
+  return null;
+}
+
+/* ====== 간단한 시간 파서 (오전 9시 / 9:30 등) ====== */
+function parseTimeFromKorean(str) {
+  if (!str) return null;
+  const text = String(str);
+
+  const m1 = text.match(/(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?)?/);
+  if (m1) {
+    let hour = parseInt(m1[2], 10);
+    const minute = m1[3] ? parseInt(m1[3], 10) : 0;
+    const ampm = m1[1];
+
+    if (ampm === "오전") {
+      if (hour === 12) hour = 0;
+    } else if (ampm === "오후") {
+      if (hour !== 12) hour += 12;
+    }
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(
+      2,
+      "0"
+    )}`;
+  }
+
+  const m2 = text.match(/(\d{1,2}):(\d{2})/);
+  if (m2) {
+    const hour = parseInt(m2[1], 10);
+    const minute = parseInt(m2[2], 10);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(
+      2,
+      "0"
+    )}`;
+  }
+
+  return null;
+}
+
+function addMinutesToHHMM(hhmm, minutesToAdd) {
+  const [hStr, mStr] = hhmm.split(":");
+  let total = parseInt(hStr, 10) * 60 + parseInt(mStr, 10) + minutesToAdd;
+  if (total < 0) total += 24 * 60;
+  total = total % (24 * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/* ====== 컴포넌트 ====== */
 const AIScheduler = () => {
-  const [date, setDate] = useState(new Date(2025, 9, 16));
+  const [date, setDate] = useState(new Date());
   const [title, setTitle] = useState("주간 스탠드업 미팅");
   const [startTime, setStartTime] = useState("10:00");
   const [endTime, setEndTime] = useState("10:30");
   const [location, setLocation] = useState("회의실 A");
   const [participants, setParticipants] = useState(["민준", "서현", "지후"]);
   const [newParticipant, setNewParticipant] = useState("");
+
+  const [naturalInput, setNaturalInput] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [aiMessage, setAiMessage] = useState("");
 
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const firstDayOfMonth = (y, m) => new Date(y, m, 1).getDay();
@@ -20,15 +311,19 @@ const AIScheduler = () => {
     const startDay = firstDayOfMonth(y, m);
     const days = [];
 
-    for (let i = 0; i < startDay; i++)
+    for (let i = 0; i < startDay; i++) {
       days.push(<div key={`empty-${i}`} className="empty-day"></div>);
+    }
 
     for (let d = 1; d <= numDays; d++) {
+      const now = new Date();
       const isToday =
-        y === new Date().getFullYear() &&
-        m === new Date().getMonth() &&
-        d === new Date().getDate();
-      const isSelected = d === date.getDate();
+        y === now.getFullYear() && m === now.getMonth() && d === now.getDate();
+      const isSelected =
+        d === date.getDate() &&
+        y === date.getFullYear() &&
+        m === date.getMonth();
+
       days.push(
         <div
           key={d}
@@ -51,7 +346,10 @@ const AIScheduler = () => {
 
   const addParticipant = (e) => {
     e.preventDefault();
-    if (newParticipant.trim() && !participants.includes(newParticipant)) {
+    if (
+      newParticipant.trim() &&
+      !participants.includes(newParticipant.trim())
+    ) {
       setParticipants([...participants, newParticipant.trim()]);
       setNewParticipant("");
     }
@@ -60,10 +358,122 @@ const AIScheduler = () => {
   const removeParticipant = (name) =>
     setParticipants(participants.filter((p) => p !== name));
 
+  const handleRegisterSchedule = () => {
+    const event = {
+      title,
+      date: date.toISOString(),
+      startTime,
+      endTime,
+      location,
+      participants,
+    };
+    console.log("등록된 일정:", event);
+    alert("일정이 등록되었습니다. (현재는 로컬에서만 저장됩니다)");
+  };
+
+  /* 자연어 → 일정 자동 인식 */
+  const handleAutoDetectFromNatural = async () => {
+    if (!naturalInput.trim()) {
+      alert("자연어 일정 문장을 먼저 입력해 주세요.");
+      return;
+    }
+
+    const now = new Date();
+
+    try {
+      setIsProcessing(true);
+      setAiMessage("");
+
+      const inputText = naturalInput.trim();
+      const result = await extractEventDetails(inputText);
+      // 예상 result 확장: { eventName, eventDate, offsetDays? }
+
+      if (!result || (!result.eventName && !result.eventDate)) {
+        setAiMessage(
+          "일정 정보를 제대로 찾지 못했어요. 내용을 조금 더 구체적으로 적어주세요."
+        );
+        return;
+      }
+
+      if (result.eventName) {
+        setTitle(result.eventName);
+      }
+
+      // 1단계: 규칙 기반 한국어 파서
+      let normalizedYMD = normalizeDateKorean(inputText, now);
+
+      // 2단계: LLM이 offsetDays(정수)를 준 경우, 그걸 사용해 "오늘 + N일"
+      let offsetDays = null;
+      if (
+        result &&
+        typeof result.offsetDays === "number" &&
+        Number.isFinite(result.offsetDays)
+      ) {
+        offsetDays = result.offsetDays;
+      } else if (result && typeof result.relative === "string") {
+        // 예: "7일 후" 같은 문자열을 내려주게 했다면 여기서 파싱
+        const m = result.relative.match(/(\d+)\s*일\s*후/);
+        if (m) offsetDays = parseInt(m[1], 10);
+      }
+
+      if (!normalizedYMD && offsetDays != null) {
+        const base = startOfDay(now);
+        base.setDate(base.getDate() + offsetDays);
+        normalizedYMD = toYMD(base);
+      }
+
+      // 3단계: 그래도 없으면 eventDate를 마지막 fallback으로 사용
+      if (!normalizedYMD && result.eventDate) {
+        const fromLLM = normalizeDateKorean(String(result.eventDate), now);
+        if (fromLLM) {
+          normalizedYMD = fromLLM;
+        } else {
+          const fallback = new Date(result.eventDate);
+          if (!isNaN(fallback.getTime())) {
+            normalizedYMD = toYMD(fallback);
+          }
+        }
+      }
+
+      if (normalizedYMD) {
+        const parts = normalizedYMD.split("-");
+        if (parts.length === 3) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10);
+          const d = parseInt(parts[2], 10);
+          const parsed = new Date(y, m - 1, d);
+          if (!isNaN(parsed.getTime())) {
+            setDate(parsed);
+          }
+        }
+      }
+
+      // 시간은 "오전 9시" 또는 결과 eventDate에 포함된 시간을 이용
+      const timeSource = result.eventDate || inputText;
+      const parsedHHMM = parseTimeFromKorean(timeSource);
+      if (parsedHHMM) {
+        setStartTime(parsedHHMM);
+        setEndTime(addMinutesToHHMM(parsedHHMM, 30));
+      }
+
+      setAiMessage(
+        "AI가 일정 정보를 채워두었어요. 확인 후 필요하면 수정하세요."
+      );
+    } catch (error) {
+      console.error("자연어 일정 인식 중 오류:", error);
+      setAiMessage("AI 분석 중 오류가 발생했습니다. 다시 시도해 주세요.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleHeaderAutoDetectClick = () => {
+    handleAutoDetectFromNatural();
+  };
+
   return (
     <div className="ai-scheduler-container">
       <div className="scheduler-main">
-        {/* HEADER */}
         <header className="scheduler-header">
           <div className="scheduler-header-left">
             <div className="scheduler-logo-puck">📅</div>
@@ -74,14 +484,16 @@ const AIScheduler = () => {
               </p>
             </div>
           </div>
-          <button className="btn-primary schedule-run-btn">
-            일정 자동 인식
+          <button
+            className="btn-primary schedule-run-btn"
+            onClick={handleHeaderAutoDetectClick}
+            disabled={isProcessing}
+          >
+            {isProcessing ? "AI 분석 중..." : "일정 자동 인식"}
           </button>
         </header>
 
-        {/* MAIN GRID */}
         <div className="scheduler-grid">
-          {/* LEFT: 일정 생성 */}
           <section className="scheduler-left">
             <div className="schedule-card">
               <h3>새 일정 등록</h3>
@@ -118,7 +530,7 @@ const AIScheduler = () => {
                 <label>날짜</label>
                 <input
                   type="date"
-                  value={date.toISOString().split("T")[0]}
+                  value={formatDateForInput(date)}
                   onChange={(e) => setDate(new Date(e.target.value))}
                 />
               </div>
@@ -153,25 +565,48 @@ const AIScheduler = () => {
               </div>
 
               <div className="form-actions">
-                <button className="btn-secondary">수정</button>
-                <button className="btn-primary">일정 등록</button>
+                <button className="btn-secondary">임시 저장</button>
+                <button
+                  className="btn-primary"
+                  onClick={handleRegisterSchedule}
+                >
+                  일정 등록
+                </button>
               </div>
             </div>
 
             <div className="natural-language-card">
               <h4>자연어 입력</h4>
-              <p>예: “내일 오전 10시에 회의실 A에서 디자인 리뷰”</p>
+              <p>예: “다음주 화요일 오전 9시에 회의실 A에서 디자인 리뷰”</p>
               <div className="natural-input">
                 <input
                   type="text"
                   placeholder="자연어로 일정 입력..."
                   style={{ width: "100%" }}
+                  value={naturalInput}
+                  onChange={(e) => setNaturalInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAutoDetectFromNatural();
+                    }
+                  }}
                 />
               </div>
+              {aiMessage && (
+                <p
+                  style={{
+                    marginTop: 6,
+                    fontSize: 12,
+                    color: "#166534",
+                  }}
+                >
+                  {aiMessage}
+                </p>
+              )}
             </div>
           </section>
 
-          {/* RIGHT: 캘린더 + 퀵액션 */}
           <section className="scheduler-right">
             <div className="calendar-card">
               <div className="calendar-header">

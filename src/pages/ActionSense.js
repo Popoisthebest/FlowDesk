@@ -9,6 +9,9 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  doc,
+  updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -17,12 +20,12 @@ import { db } from "../firebase";
  * - 채팅 메시지에서 행동 유발 문장 감지 → 업무 카드 생성 제안/자동등록
  * - 룰 기반 + (옵션) LLM 보강
  * - 채팅: Firebase Firestore 사용
- * - 업무 카드(tasks): localStorage 유지
+ * - 업무 카드(tasks): Firestore actionSenseTasks 컬렉션에 저장
  */
 
 const ENABLE_LLM_FALLBACK = true;
 
-/* ===== Date utils (기존 그대로) ===== */
+/* ===== Date utils ===== */
 function pad2(n) {
   return n < 10 ? `0${n}` : `${n}`;
 }
@@ -42,36 +45,6 @@ function endOfWeek(d) {
   x.setDate(x.getDate() + diff);
   x.setHours(0, 0, 0, 0);
   return x;
-}
-function parseWeekdayToken(token) {
-  const map = {
-    일: 0,
-    일요일: 0,
-    월: 1,
-    월요일: 1,
-    화: 2,
-    화요일: 2,
-    수: 3,
-    수요일: 3,
-    목: 4,
-    목요일: 4,
-    금: 5,
-    금요일: 5,
-    토: 6,
-    토요일: 6,
-  };
-  return map[token] ?? null;
-}
-function nextWeekdayDate(from, targetDow, { allowToday = false } = {}) {
-  const d = new Date(from);
-  const cur = d.getDay();
-  let diff = targetDow - cur;
-  if (diff < 0) diff += 7;
-  if (diff === 0 && !allowToday) diff = 7;
-  const candidate = new Date(d);
-  candidate.setDate(d.getDate() + diff);
-  candidate.setHours(0, 0, 0, 0);
-  return candidate;
 }
 function lastDayOfMonth(date) {
   const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
@@ -100,6 +73,37 @@ function ensureFutureDate(
   return t;
 }
 
+// [CHANGED] 월 기준 요일 인덱스: 월=0, 화=1, ... 일=6
+function parseWeekdayIndexMon0(token) {
+  const map = {
+    월: 0,
+    월요일: 0,
+    화: 1,
+    화요일: 1,
+    수: 2,
+    수요일: 2,
+    목: 3,
+    목요일: 3,
+    금: 4,
+    금요일: 4,
+    토: 5,
+    토요일: 5,
+    일: 6,
+    일요일: 6,
+  };
+  return map[token] ?? null;
+}
+
+// [CHANGED] 기준 날짜가 속한 "이번주 월요일" 구하기 (월요일을 주 시작으로)
+function getMondayOfWeek(date) {
+  const d = startOfDay(date);
+  const dow = d.getDay(); // 0=일
+  const diffFromMon = (dow + 6) % 7; // 월(1)->0, 화(2)->1, ..., 일(0)->6
+  d.setDate(d.getDate() - diffFromMon);
+  return d;
+}
+
+// [CHANGED] 개선된 한국어 날짜 파서 (AIScheduler와 동일 로직)
 function normalizeDateKorean(str, now = new Date()) {
   if (!str) return null;
   const text = str.trim();
@@ -107,6 +111,7 @@ function normalizeDateKorean(str, now = new Date()) {
 
   const hasPastMarker = /(지난|지난주|지난달|작년|전년)/.test(text);
 
+  // 오늘/내일/모레/글피
   if (/오늘|EOD|오늘\s*마감|오늘\s*까지/i.test(text)) {
     return toYMD(today);
   }
@@ -125,44 +130,69 @@ function normalizeDateKorean(str, now = new Date()) {
     d.setDate(d.getDate() + 3);
     return toYMD(d);
   }
+
+  // 이번 주말 / 주말까지
   if (/이번\s*주\s*말|EOW|주말\s*까지/i.test(text)) {
     const eow = endOfWeek(today);
     return toYMD(eow);
   }
+
+  // 월말/말일
   if (/월말|말일/.test(text)) {
     return toYMD(lastDayOfMonth(today));
   }
 
+  // [CHANGED] "이번/다음/다다음/다다다음 주 + 요일"
   const wk = text.match(
-    /(이번\s*주|다음\s*주|내주|차주|다다음\s*주)\s*(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)/
+    /((?:이번|다음|내|차|다다음|다다다음)\s*주)\s*(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)/
   );
   if (wk) {
     const weekWord = wk[1];
     const weekdayWord = wk[2];
-    const targetDow = parseWeekdayToken(weekdayWord);
-    if (targetDow != null) {
-      const base = new Date(today);
-      let addWeeks = 0;
-      if (/다음\s*주|내주|차주/.test(weekWord)) addWeeks = 1;
-      if (/다다음\s*주/.test(weekWord)) addWeeks = 2;
-      base.setDate(base.getDate() + addWeeks * 7);
-      const d = nextWeekdayDate(base, targetDow, { allowToday: true });
-      if (toYMD(d) < toYMD(today)) d.setDate(d.getDate() + 7);
-      return toYMD(d);
+
+    let weekOffset = 0;
+    if (/다다다음/.test(weekWord)) weekOffset = 3;
+    else if (/다다음/.test(weekWord)) weekOffset = 2;
+    else if (/다음|내|차/.test(weekWord)) weekOffset = 1;
+    else weekOffset = 0; // 이번주
+
+    const idx = parseWeekdayIndexMon0(weekdayWord);
+    if (idx != null) {
+      const thisMon = getMondayOfWeek(today);
+      const weekStart = new Date(thisMon);
+      weekStart.setDate(weekStart.getDate() + 7 * weekOffset);
+
+      const target = new Date(weekStart);
+      target.setDate(weekStart.getDate() + idx);
+
+      // "이번주 화요일"인데 이미 지났으면 다음주로
+      if (weekOffset === 0 && target < today) {
+        target.setDate(target.getDate() + 7);
+      }
+
+      return toYMD(target);
     }
   }
 
+  // [CHANGED] 단독 요일: "화요일에 회의" → 가장 가까운 미래의 해당 요일
   const wd = text.match(
-    /\b(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)\b/
+    /(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)/
   );
   if (wd) {
-    const targetDow = parseWeekdayToken(wd[1]);
-    if (targetDow != null) {
-      const d = nextWeekdayDate(today, targetDow, { allowToday: false });
-      return toYMD(d);
+    const idx = parseWeekdayIndexMon0(wd[1]);
+    if (idx != null) {
+      const thisMon = getMondayOfWeek(today);
+      let target = new Date(thisMon);
+      target.setDate(thisMon.getDate() + idx);
+
+      if (target <= today) {
+        target.setDate(target.getDate() + 7);
+      }
+      return toYMD(target);
     }
   }
 
+  // 2025-11-13 / 2025.11.13
   let m = text.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
   if (m) {
     const y = +m[1],
@@ -178,6 +208,7 @@ function normalizeDateKorean(str, now = new Date()) {
     }
   }
 
+  // 11-13 / 11.13 (올해)
   m = text.match(/\b(\d{1,2})[.\-\/](\d{1,2})\b/);
   if (m) {
     const y = today.getFullYear();
@@ -193,6 +224,7 @@ function normalizeDateKorean(str, now = new Date()) {
     }
   }
 
+  // (이번/다음달) 11월 13일
   m = text.match(
     /(?:(이번\s*달|다음\s*달)\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일/
   );
@@ -219,14 +251,14 @@ function normalizeDateKorean(str, now = new Date()) {
   return null;
 }
 
-/* ===== 핵심 분석기(룰 기반) (기존 그대로) ===== */
+/* ===== 핵심 분석기(룰 기반) ===== */
 function analyzeMessageRuleBased(text, now = new Date()) {
   const original = text;
   text = (text || "").trim();
 
   const actionVerbs = [
     /해\s*줘/,
-    /해주세요/,
+    /해\s*주(세|세요|십시[오요]?)/,
     /부탁/,
     /진행하(자|세요)/,
     /처리/,
@@ -257,6 +289,7 @@ function analyzeMessageRuleBased(text, now = new Date()) {
   }
 
   let dueDate = null;
+  // [CHANGED] 개선된 normalizeDateKorean 사용
   dueDate = normalizeDateKorean(text, now);
   if (!dueDate) {
     const afterBy = text.match(/(?:\bby\b|까지)\s*([^.,;]+)/i);
@@ -296,8 +329,7 @@ function analyzeMessageRuleBased(text, now = new Date()) {
   };
 }
 
-/* ===== 로컬스토리지: tasks만 유지 ===== */
-const LS_TASKS = "actionsense_tasks_v1";
+/* ===== 로컬스토리지: 사용자 이름만 유지 ===== */
 const LS_USER_NAME = "actionsense_user_name";
 
 function loadLS(key, def) {
@@ -317,7 +349,8 @@ function saveLS(key, val) {
 const ActionSense = () => {
   // 메시지는 Firestore에서만 관리
   const [messages, setMessages] = useState([]);
-  const [tasks, setTasks] = useState(() => loadLS(LS_TASKS, []));
+  // 업무 카드는 Firestore actionSenseTasks 컬렉션에서 관리
+  const [tasks, setTasks] = useState([]);
   const [input, setInput] = useState("");
   const [draft, setDraft] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -327,7 +360,7 @@ const ActionSense = () => {
   const [channel, setChannel] = useState("#general");
   const channels = ["#general", "#dev", "#design"];
 
-  // 👉 사용자 이름 (처음에 한 번 입력)
+  // 사용자 이름
   const [userName, setUserName] = useState(() => {
     const saved = loadLS(LS_USER_NAME, null);
     return typeof saved === "string" ? saved : "";
@@ -339,14 +372,13 @@ const ActionSense = () => {
 
   const isNameReady = !!userName;
 
-  // Firestore 구독
+  // Firestore: 채팅 메시지 구독
   useEffect(() => {
     const colRef = collection(db, "actionSenseMessages");
     const q = query(colRef, orderBy("createdAt", "asc"));
 
     const unsub = onSnapshot(q, async (snap) => {
       if (snap.empty) {
-        // 첫 실행 시 시스템 메시지 1개 삽입
         const sysMsg = {
           role: "system",
           text: "ActionSense가 채팅을 분석해 업무 등록을 제안합니다. 예: “@민준 이번주 금요일까지 백엔드 배포 준비 부탁 #배포 #우선”",
@@ -358,10 +390,10 @@ const ActionSense = () => {
         return;
       }
 
-      const list = snap.docs.map((doc) => {
-        const data = doc.data();
+      const list = snap.docs.map((docSnap) => {
+        const data = docSnap.data();
         return {
-          id: doc.id,
+          id: docSnap.id,
           role: data.role || "user",
           text: data.text || "",
           channel: data.channel || "#general",
@@ -376,17 +408,39 @@ const ActionSense = () => {
     return () => unsub();
   }, []);
 
-  // tasks는 여전히 localStorage에 저장
+  // Firestore: 업무 카드 구독
   useEffect(() => {
-    saveLS(LS_TASKS, tasks);
-  }, [tasks]);
+    const colRef = collection(db, "actionSenseTasks");
+    const q = query(colRef, orderBy("createdAt", "desc"));
+
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          status: data.status || "진행 예정",
+          title: data.title || "제목 없음",
+          description: data.description || "",
+          assignedTo: data.assignedTo || null,
+          dueDate: data.dueDate || null,
+          priority: data.priority || "보통",
+          tags: data.tags || [],
+          createdAt: data.createdAt,
+          progress: data.progress ?? 0,
+        };
+      });
+      setTasks(list);
+    });
+
+    return () => unsub();
+  }, []);
 
   // 메시지/모달 변화시 맨 아래로 스크롤
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, modalOpen]);
 
-  // 현재 채널의 메시지 + 중복 방지 (같은 시각, 같은 내용이면 1개로)
+  // 현재 채널 메시지 + UI 레벨 중복 제거
   const visibleMessages = useMemo(() => {
     const filtered = messages.filter(
       (m) => !m.channel || m.channel === channel
@@ -409,7 +463,6 @@ const ActionSense = () => {
         last.role === m.role &&
         (last.authorName || "") === (m.authorName || "")
       ) {
-        // 중복으로 보이는 경우 스킵
         continue;
       }
       deduped.push(m);
@@ -418,7 +471,7 @@ const ActionSense = () => {
     return deduped;
   }, [messages, channel]);
 
-  // Firestore에 메시지 추가
+  // Firestore에 메시지 추가 (쓰기 전 중복 방지)
   const addMessage = async (role, text, meta = {}) => {
     const displayName =
       meta.authorName ||
@@ -428,10 +481,30 @@ const ActionSense = () => {
         ? "ActionSense"
         : "시스템");
 
+    const targetChannel = meta.channel || channel;
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    const isDuplicate = messages.some((m) => {
+      const ts = m.createdAt?.seconds ?? null;
+      if (ts == null) return false;
+      const diff = Math.abs(nowSec - ts);
+      return (
+        diff <= 2 &&
+        (m.channel || "#general") === targetChannel &&
+        (m.role || "user") === role &&
+        (m.authorName || "") === displayName &&
+        (m.text || "") === text
+      );
+    });
+
+    if (isDuplicate) {
+      return;
+    }
+
     const payload = {
       role,
       text,
-      channel: meta.channel || channel,
+      channel: targetChannel,
       suggestion: meta.suggestion || null,
       authorName: displayName,
       createdAt: serverTimestamp(),
@@ -439,9 +512,10 @@ const ActionSense = () => {
     await addDoc(collection(db, "actionSenseMessages"), payload);
   };
 
-  const addTask = (payload) => {
-    const t = {
-      id: `TASK-${Date.now()}`,
+  // Firestore에 업무 카드 추가
+  const addTask = async (payload) => {
+    const colRef = collection(db, "actionSenseTasks");
+    const base = {
       status: "진행 예정",
       title: payload.title || "제목 없음",
       description: payload.description || "",
@@ -449,15 +523,15 @@ const ActionSense = () => {
       dueDate: payload.dueDate || null,
       priority: payload.priority || "보통",
       tags: payload.tags || [],
-      createdAt: new Date().toISOString(),
+      createdAt: serverTimestamp(),
       progress: 0,
     };
-    setTasks((prev) => [t, ...prev]);
-    return t;
+    const docRef = await addDoc(colRef, base);
+    return { id: docRef.id, ...base };
   };
 
   const onAcceptSuggestion = async (suggestion) => {
-    const t = addTask({
+    const t = await addTask({
       ...suggestion.extracted,
       description: `채팅에서 자동 생성됨: “${
         suggestion.preview || suggestion.extracted.title
@@ -478,7 +552,7 @@ const ActionSense = () => {
   };
 
   const onSubmitDraft = async () => {
-    const t = addTask({
+    const t = await addTask({
       ...draft,
       description: `수정 후 등록됨: “${draft.title}”`,
     });
@@ -491,104 +565,155 @@ const ActionSense = () => {
     );
   };
 
+  // === 메시지 분석 + AI 보강 ===
   const runAnalyzerOnMessage = async (text) => {
-    const rb = analyzeMessageRuleBased(text, new Date());
+    const now = new Date();
+    const rb = analyzeMessageRuleBased(text, now);
+
+    // 1) 룰 기반에서 액션으로 판단된 경우
     if (rb.isAction) {
       const { extracted, confidence } = rb;
-      const preview = `${extracted.title} ${
-        extracted.assignedTo ? ` / 담당:${extracted.assignedTo}` : ""
-      }${extracted.dueDate ? ` / 기한:${extracted.dueDate}` : ""}${
-        extracted.priority ? ` / 우선순위:${extracted.priority}` : ""
-      }${extracted.tags?.length ? ` / #${extracted.tags.join(" #")}` : ""}`;
+
+      let finalExtracted = { ...extracted };
+
+      // 담당자 누락 시 AI로 추론 시도
+      if (!finalExtracted.assignedTo || finalExtracted.assignedTo === "null") {
+        try {
+          setBusy(true);
+          const aiGuess = await extractActionItems(text);
+          if (Array.isArray(aiGuess) && aiGuess.length > 0) {
+            const first = aiGuess[0];
+            if (first.assignedTo && first.assignedTo.length > 0) {
+              finalExtracted.assignedTo = first.assignedTo;
+              await addMessage(
+                "system",
+                `🤖 담당자가 명시되지 않아 AI가 '${first.assignedTo}'님을 담당자로 추론했습니다.`,
+                { authorName: "ActionSense" }
+              );
+            }
+            if (first.text && first.text.length > 0) {
+              finalExtracted.title = first.text;
+            }
+
+            // [선택] LLM이 상대 날짜 정보를 주는 경우, 룰 기반보다 우선 적용하고 싶다면 여기서 보정 가능
+            // 예: first.offsetDays, first.relative 등
+          }
+        } catch (e) {
+          console.warn("AI 담당자 추론 실패:", e);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      const preview = `${finalExtracted.title} ${
+        finalExtracted.assignedTo ? ` / 담당:${finalExtracted.assignedTo}` : ""
+      }${finalExtracted.dueDate ? ` / 기한:${finalExtracted.dueDate}` : ""}${
+        finalExtracted.priority ? ` / 우선순위:${finalExtracted.priority}` : ""
+      }${
+        finalExtracted.tags?.length
+          ? ` / #${finalExtracted.tags.join(" #")}`
+          : ""
+      }`;
 
       await addMessage("assistant", "💡 업무로 등록할까요?", {
-        suggestion: { extracted, confidence, preview },
+        suggestion: { extracted: finalExtracted, confidence, preview },
         authorName: "ActionSense",
       });
 
       if (confidence >= 0.95) {
-        const t = addTask({
-          ...extracted,
-          description: `고신뢰 자동생성: “${extracted.title}”`,
+        const t = await addTask({
+          ...finalExtracted,
+          description: `고신뢰 자동생성: “${finalExtracted.title}”`,
         });
         await addMessage(
           "system",
           `⚡ 고신뢰 감지로 자동 등록: #${t.id} (${t.title})`,
           { authorName: "ActionSense" }
         );
-        return;
       }
-
-      if (ENABLE_LLM_FALLBACK && confidence < 0.8) {
-        try {
-          setBusy(true);
-          const ai = await extractActionItems(text);
-          if (Array.isArray(ai) && ai.length > 0) {
-            const a = ai[0];
-            const llmExtracted = {
-              title: a.text || extracted.title,
-              assignedTo: a.assignedTo || extracted.assignedTo,
-              dueDate: a.dueDate || extracted.dueDate,
-              priority: extracted.priority,
-              tags: extracted.tags,
-            };
-            const llmPreview = `${llmExtracted.title} ${
-              llmExtracted.assignedTo
-                ? ` / 담당:${llmExtracted.assignedTo}`
-                : ""
-            }${llmExtracted.dueDate ? ` / 기한:${llmExtracted.dueDate}` : ""}${
-              llmExtracted.priority
-                ? ` / 우선순위:${llmExtracted.priority}`
-                : ""
-            }${
-              llmExtracted.tags?.length
-                ? ` / #${llmExtracted.tags.join(" #")}`
-                : ""
-            }`;
-
-            await addMessage("assistant", "🤖 보강 분석 제안:", {
-              suggestion: {
-                extracted: llmExtracted,
-                confidence: Math.max(confidence, 0.85),
-                preview: llmPreview,
-              },
-              authorName: "ActionSense",
-            });
-          }
-        } catch (e) {
-          console.warn("LLM 보강 실패:", e);
-        } finally {
-          setBusy(false);
-        }
-      }
-      return;
     }
-
-    if (ENABLE_LLM_FALLBACK) {
+    // 2) 룰 기반에서 액션이 아니라고 판단되었지만, LLM 보강을 켜둔 경우
+    else if (ENABLE_LLM_FALLBACK) {
       try {
         setBusy(true);
-        const ai = await extractActionItems(text);
-        if (Array.isArray(ai) && ai.length > 0) {
-          const a = ai[0];
+        const aiGuess = await extractActionItems(text);
+
+        if (Array.isArray(aiGuess) && aiGuess.length > 0) {
+          const first = aiGuess[0];
+
+          // [CHANGED] LLM이 상대 날짜(offsetDays/relative)나 dueDate를 주면 여기서 YMD로 변환
+          let resolvedDue = null;
+
+          // 1) offsetDays: 숫자 (예: 7 → 7일 후)
+          if (
+            typeof first.offsetDays === "number" &&
+            Number.isFinite(first.offsetDays)
+          ) {
+            const base = startOfDay(now);
+            base.setDate(base.getDate() + first.offsetDays);
+            resolvedDue = toYMD(base);
+          }
+
+          // 2) relative: "7일 후" 같은 문자열
+          if (!resolvedDue && typeof first.relative === "string") {
+            const m = first.relative.match(/(\d+)\s*일\s*후/);
+            if (m) {
+              const offset = parseInt(m[1], 10);
+              if (Number.isFinite(offset)) {
+                const base = startOfDay(now);
+                base.setDate(base.getDate() + offset);
+                resolvedDue = toYMD(base);
+              }
+            }
+          }
+
+          // 3) dueDate: "다음주 화요일" 또는 "2025-11-13" 같은 문자열
+          if (!resolvedDue && first.dueDate) {
+            const s = String(first.dueDate).trim();
+            const norm = normalizeDateKorean(s, now);
+            if (norm) {
+              resolvedDue = norm;
+            } else {
+              const d = new Date(s);
+              if (!isNaN(d.getTime())) {
+                resolvedDue = toYMD(d);
+              }
+            }
+          }
+
           const extracted = {
-            title: a.text || text,
-            assignedTo: a.assignedTo || null,
-            dueDate: a.dueDate || null,
-            priority: "보통",
+            title:
+              (first.text && String(first.text).trim()) ||
+              text.slice(0, 64) ||
+              "업무 요청",
+            assignedTo:
+              (first.assignedTo && String(first.assignedTo).trim()) || null,
+            dueDate: resolvedDue,
+            priority: first.priority || "보통",
             tags: [],
           };
+
+          if (!extracted.assignedTo) {
+            const mention = text.match(/@([가-힣A-Za-z0-9_]+)/);
+            if (mention) {
+              extracted.assignedTo = mention[1];
+            }
+          }
+
+          const confidence = 0.8;
           const preview = `${extracted.title} ${
             extracted.assignedTo ? ` / 담당:${extracted.assignedTo}` : ""
-          }${extracted.dueDate ? ` / 기한:${extracted.dueDate}` : ""}`;
+          }${extracted.dueDate ? ` / 기한:${extracted.dueDate}` : ""}${
+            extracted.priority ? ` / 우선순위:${extracted.priority}` : ""
+          }`;
 
-          await addMessage("assistant", "💡 업무로 등록할까요? (AI 감지)", {
-            suggestion: { extracted, confidence: 0.8, preview },
+          await addMessage("assistant", "💡 업무로 등록할까요?", {
+            suggestion: { extracted, confidence, preview },
             authorName: "ActionSense",
           });
-          return;
         }
       } catch (e) {
-        console.warn("LLM 최종 감지 실패:", e);
+        console.warn("LLM fallback error:", e);
       } finally {
         setBusy(false);
       }
@@ -651,7 +776,7 @@ const ActionSense = () => {
       <div className="as-main">
         {/* 왼쪽: 채팅 + 제안 */}
         <section className="as-chat-card">
-          {/* 👉 이름 설정 영역 */}
+          {/* 이름 설정 영역 */}
           <div className="as-name-setup">
             <div className="as-name-setup-label">
               <span className="as-name-dot">●</span>
@@ -826,29 +951,29 @@ const ActionSense = () => {
                   <div className="card-actions">
                     <button
                       className="btn-secondary"
-                      onClick={() => {
-                        setTasks((prev) =>
-                          prev.map((x) =>
-                            x.id === t.id
-                              ? {
-                                  ...x,
-                                  progress: Math.min(
-                                    100,
-                                    (x.progress ?? 0) + 20
-                                  ),
-                                }
-                              : x
-                          )
-                        );
+                      onClick={async () => {
+                        const current = t.progress ?? 0;
+                        const next = Math.min(100, current + 20);
+                        try {
+                          await updateDoc(doc(db, "actionSenseTasks", t.id), {
+                            progress: next,
+                          });
+                        } catch (e) {
+                          console.error("Progress update failed:", e);
+                        }
                       }}
                     >
                       진행 +20%
                     </button>
                     <button
                       className="btn-danger"
-                      onClick={() =>
-                        setTasks((prev) => prev.filter((x) => x.id !== t.id))
-                      }
+                      onClick={async () => {
+                        try {
+                          await deleteDoc(doc(db, "actionSenseTasks", t.id));
+                        } catch (e) {
+                          console.error("Task delete failed:", e);
+                        }
+                      }}
                     >
                       삭제
                     </button>

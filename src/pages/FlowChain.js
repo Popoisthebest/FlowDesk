@@ -2,28 +2,43 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./FlowChain.css";
 import { generateFlowReportMarkdown } from "../utils/openaiApi";
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db } from "../firebase";
 
 /**
  * FlowChain
  * - meetingRecords + ActionSense tasks 를 하나의 타임라인으로 연결
  * - 회의 → 액션 → 진행 → 보고서
+ * - 기존: localStorage 사용
+ * - 변경: Firestore(meetingRecords, actionSenseTasks, flowchainReports) 사용
  */
 
-const LS_MEETINGS = "meetingRecords";
-const LS_TASKS = "actionsense_tasks_v1";
-const LS_REPORTS = "flowchain_reports_v1";
-
-/* ======================= 안전한 날짜 유틸 ======================= */
+/* ======================= 안전한 날짜 유틸 (Timestamp 대응) ======================= */
 function safeParseDate(input) {
   if (!input && input !== 0) return null;
 
+  // 이미 Date 인스턴스인 경우
   if (input instanceof Date && !isNaN(input)) return input;
 
+  // Firestore Timestamp(seconds, nanoseconds) 지원
+  if (input && typeof input === "object" && typeof input.seconds === "number") {
+    return new Date(input.seconds * 1000);
+  }
+
+  // 숫자(타임스탬프 ms)
   if (typeof input === "number") {
     const d = new Date(input);
     return isNaN(d) ? null : d;
   }
 
+  // 문자열
   if (typeof input === "string") {
     let d = new Date(input);
     if (!isNaN(d)) return d;
@@ -50,10 +65,12 @@ function safeParseDate(input) {
   }
   return null;
 }
+
 function toISOorNow(input) {
   const d = safeParseDate(input) || new Date();
   return d.toISOString();
 }
+
 function fmtDateTime(input) {
   const d = safeParseDate(input);
   if (!d) return String(input ?? "");
@@ -65,22 +82,8 @@ function fmtDateTime(input) {
   return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
-/* ======================= 저장소 유틸 ======================= */
-function loadLS(key, def) {
-  try {
-    return JSON.parse(localStorage.getItem(key)) ?? def;
-  } catch {
-    return def;
-  }
-}
-function saveLS(key, val) {
-  try {
-    localStorage.setItem(key, JSON.stringify(val));
-  } catch {}
-}
-
 /* ======================= 연결 휴리스틱 ======================= */
-// 회의 시각 기준 36시간 내 생성된 태스크를 연결
+// 회의 시각 기준 36시간 내 생성된 태스크를 "연결"해서 회의 카드에만 표시 (타임라인에서 숨기지는 않음)
 function linkTasksToMeeting(meeting, tasks) {
   const base = safeParseDate(meeting?.date);
   if (!base) return [];
@@ -105,9 +108,11 @@ const defaultProjects = [
 const defaultPeriods = ["전체", "이번 주", "이번 달", "지난 달"];
 
 const FlowChain = () => {
-  const [meetings, setMeetings] = useState(() => loadLS(LS_MEETINGS, []));
-  const [tasks, setTasks] = useState(() => loadLS(LS_TASKS, []));
-  const [reports, setReports] = useState(() => loadLS(LS_REPORTS, []));
+  // 회의 / 업무 / 보고서: Firestore에서 실시간 구독
+  const [meetings, setMeetings] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [reports, setReports] = useState([]);
+
   const [filters, setFilters] = useState({
     project: "모든 프로젝트",
     period: "전체",
@@ -116,16 +121,69 @@ const FlowChain = () => {
   const [busy, setBusy] = useState(false);
   const [reportMarkdown, setReportMarkdown] = useState("");
 
+  /* ======================= Firestore 구독 ======================= */
   useEffect(() => {
-    const onFocus = () => {
-      setMeetings(loadLS(LS_MEETINGS, []));
-      setTasks(loadLS(LS_TASKS, []));
-      setReports(loadLS(LS_REPORTS, []));
+    // 1) 회의 기록: meetingRecords
+    const meetingsRef = collection(db, "meetingRecords");
+    const meetingsQuery = query(meetingsRef, orderBy("createdAt", "asc"));
+
+    const unsubMeetings = onSnapshot(meetingsQuery, (snap) => {
+      const list = snap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+        };
+      });
+      setMeetings(list);
+    });
+
+    // 2) 업무 카드: actionSenseTasks
+    const tasksRef = collection(db, "actionSenseTasks");
+    const tasksQuery = query(tasksRef, orderBy("createdAt", "asc"));
+
+    const unsubTasks = onSnapshot(tasksQuery, (snap) => {
+      const list = snap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          status: data.status || "진행 예정",
+          title: data.title || "업무",
+          description: data.description || "",
+          assignedTo: data.assignedTo || null,
+          dueDate: data.dueDate || null,
+          priority: data.priority || "보통",
+          tags: data.tags || [],
+          createdAt: data.createdAt || null,
+          progress: data.progress ?? 0,
+        };
+      });
+      setTasks(list);
+    });
+
+    // 3) FlowChain 보고서: flowchainReports
+    const reportsRef = collection(db, "flowchainReports");
+    const reportsQuery = query(reportsRef, orderBy("createdAt", "desc"));
+
+    const unsubReports = onSnapshot(reportsQuery, (snap) => {
+      const list = snap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+        };
+      });
+      setReports(list);
+    });
+
+    return () => {
+      unsubMeetings();
+      unsubTasks();
+      unsubReports();
     };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
+  /* ======================= 필터 ======================= */
   const isInPeriod = (dateLike) => {
     if (filters.period === "전체") return true;
     const d = safeParseDate(dateLike);
@@ -179,6 +237,7 @@ const FlowChain = () => {
     return Array.from(set);
   }, [meetings, tasks]);
 
+  // 멤버 옵션 변경 시, 필터 기본값 세팅
   useEffect(() => {
     if (memberOptions.length === 0) return;
     setFilters((f) => {
@@ -198,6 +257,7 @@ const FlowChain = () => {
     });
   }, [memberOptions]);
 
+  /* ======================= 타임라인 구성 ======================= */
   const timeline = useMemo(() => {
     const nodes = [];
 
@@ -210,6 +270,10 @@ const FlowChain = () => {
       (actionItemsArr || []).forEach((ai) => {
         if (ai && ai.assignedTo) names.add(ai.assignedTo);
       });
+
+      // 참여자/담당자 정보가 전혀 없으면 숨기지 말고 그대로 표시
+      if (names.size === 0) return true;
+
       for (const n of names) {
         if (filters.members.has(n)) return true;
       }
@@ -218,10 +282,13 @@ const FlowChain = () => {
 
     const taskPassesMemberFilter = (task) => {
       if (!hasMemberFilter) return true;
-      if (task.assignedTo && filters.members.has(task.assignedTo)) return true;
+      // 담당자가 없는 업무는 항상 표시
+      if (!task.assignedTo) return true;
+      if (filters.members.has(task.assignedTo)) return true;
       return false;
     };
 
+    // 1) 회의 노드
     for (const mt of meetings) {
       if (!isInPeriod(mt?.date)) continue;
 
@@ -246,12 +313,11 @@ const FlowChain = () => {
       });
     }
 
-    const linkedSet = new Set(nodes.flatMap((n) => n.linkedTasks));
+    // 2) 업무 노드
     for (const t of tasks) {
       const id = t.id || `TASK-${Math.random().toString(36).slice(2)}`;
       const created = t.createdAt || t.date || Date.now();
       if (!isInPeriod(created)) continue;
-      if (linkedSet.has(id)) continue;
       if (!taskPassesMemberFilter(t)) continue;
 
       nodes.push({
@@ -285,6 +351,7 @@ const FlowChain = () => {
     return { meetingCnt, taskCnt, progressAvg };
   }, [timeline]);
 
+  /* ======================= 보고서 생성 (Firestore에 저장) ======================= */
   const handleGenerateReport = async () => {
     try {
       setBusy(true);
@@ -296,16 +363,16 @@ const FlowChain = () => {
       const md = await generateFlowReportMarkdown(payload);
       if (md) {
         setReportMarkdown(md);
-        const rec = {
-          id: `report-${Date.now()}`,
-          createdAt: new Date().toISOString(),
+
+        // Firestore에 보고서 저장
+        const colRef = collection(db, "flowchainReports");
+        await addDoc(colRef, {
           project: filters.project,
           period: filters.period,
           markdown: md,
-        };
-        const merged = [rec, ...reports];
-        setReports(merged);
-        saveLS(LS_REPORTS, merged);
+          createdAt: serverTimestamp(),
+        });
+        // 목록 갱신은 onSnapshot이 처리
       }
     } finally {
       setBusy(false);
@@ -315,7 +382,6 @@ const FlowChain = () => {
   const copyMarkdown = async () => {
     try {
       await navigator.clipboard.writeText(reportMarkdown || "");
-      alert("마크다운을 클립보드에 복사했습니다.");
     } catch {
       alert("복사 실패. 브라우저 권한을 확인해주세요.");
     }
@@ -476,8 +542,12 @@ const FlowChain = () => {
         {/* FlowChain Timeline */}
         <div className="flowchain-panel">
           <div className="panel-header">
-            <h1>FlowChain • {filters.project}</h1>
-            <p>회의부터 업무, 진행 현황, 보고서까지 하나의 타임라인으로 확인</p>
+            <div>
+              <h1>FlowChain • {filters.project}</h1>
+              <p>
+                회의부터 업무, 진행 현황, 보고서까지 하나의 타임라인으로 확인
+              </p>
+            </div>
           </div>
 
           <div className="action-flow">
@@ -522,6 +592,7 @@ const FlowChain = () => {
                 );
               }
 
+              // task 노드
               return (
                 <div key={node.id} className="action-card">
                   <span className="action-indicator task-indicator" />
