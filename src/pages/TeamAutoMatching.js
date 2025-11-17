@@ -48,6 +48,40 @@ const TeamAutoMatching = () => {
       tags: ["#API", "#데이터"],
       affinity: 82,
     },
+
+    {
+      name: "하린",
+      role: "디자인",
+      availability: "오전 10-1시",
+      slots: ["오전"],
+      tags: ["#UI", "#UX", "#모바일"],
+      affinity: 91,
+    },
+    {
+      name: "윤아",
+      role: "디자인",
+      availability: "오후 1-6시",
+      slots: ["오후"],
+      tags: ["#UI", "#브랜딩", "#앱"],
+      affinity: 87,
+    },
+    {
+      name: "지안",
+      role: "디자인",
+      availability: "야간 7-10시",
+      slots: ["야간"],
+      tags: ["#UX", "#프로토타입", "#React"],
+      affinity: 84,
+    },
+
+    {
+      name: "도윤",
+      role: "PM",
+      availability: "오전 9-오후 3시",
+      slots: ["오전", "오후"],
+      tags: ["#UI", "#데이터", "#PM"],
+      affinity: 89,
+    },
   ];
 
   // 초기 샘플 추천 팀
